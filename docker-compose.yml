@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: clube-ofertas-postgres
+    environment:
+      POSTGRES_DB: clube_das_ofertas
+      POSTGRES_USER: clube
+      POSTGRES_PASSWORD: clube123
+    ports:
+      - "5432:5432"
+    volumes:
+      - clube_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  clube_postgres_data:

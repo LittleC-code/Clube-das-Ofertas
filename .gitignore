@@ -1,0 +1,9 @@
+bin/
+obj/
+.vs/
+*.user
+
+app-run*.log
+curl-cookies.txt
+*-response.html
+*-headers.txt
