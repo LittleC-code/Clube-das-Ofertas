@@ -1,4 +1,4 @@
-using ClubeDasOfertas.Web.Data;
+﻿using ClubeDasOfertas.Web.Data;
 using ClubeDasOfertas.Web.Domain;
 using ClubeDasOfertas.Web.Services;
 using ClubeDasOfertas.Web.Ui;
@@ -84,13 +84,13 @@ app.Use(async (context, next) =>
             : "";
         var body = """
 <section class="panel">
-  <h1>Formulário expirado</h1>
-  <p>O envio não foi aceito porque o token de segurança expirou ou ficou inválido.</p>
-  <p>Recarregue a página, confirme o login se necessário e envie novamente.</p>
+  <h1>FormulÃ¡rio expirado</h1>
+  <p>O envio nÃ£o foi aceito porque o token de seguranÃ§a expirou ou ficou invÃ¡lido.</p>
+  <p>Recarregue a pÃ¡gina, confirme o login se necessÃ¡rio e envie novamente.</p>
 </section>
 """;
 
-        var page = HtmlView.Layout("Formulário expirado", context.User, body, antiForgeryField: antiForgeryField);
+        var page = HtmlView.Layout("FormulÃ¡rio expirado", context.User, body, antiForgeryField: antiForgeryField);
         await context.Response.WriteAsync(page);
     }
 });
@@ -115,7 +115,7 @@ app.MapGet("/setup", async (HttpContext context, AppRepository repository, IAnti
     var body = $$"""
 <section class="login">
   <h1>Configurar acesso inicial</h1>
-  <p class="muted">Crie o primeiro administrador do sistema. Depois disso, a tela de configuração inicial será desativada.</p>
+  <p class="muted">Crie o primeiro administrador do sistema. Depois disso, a tela de configuraÃ§Ã£o inicial serÃ¡ desativada.</p>
   <form method="post" action="/setup">
     {{antiForgeryField}}
     <div class="field">
@@ -139,7 +139,7 @@ app.MapGet("/setup", async (HttpContext context, AppRepository repository, IAnti
 </section>
 """;
 
-    return HtmlView.Page("Configuração inicial", context.User, body, Notice(context.Request));
+    return HtmlView.Page("ConfiguraÃ§Ã£o inicial", context.User, body, Notice(context.Request));
 }).AllowAnonymous();
 
 app.MapPost("/setup", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
@@ -164,7 +164,7 @@ app.MapPost("/setup", async (HttpContext context, AppRepository repository, IAnt
 
     if (!LooksLikeEmail(email))
     {
-        return RedirectWithNotice("/setup", "Informe um email válido.");
+        return RedirectWithNotice("/setup", "Informe um email vÃ¡lido.");
     }
 
     if (password.Length < 10)
@@ -174,7 +174,7 @@ app.MapPost("/setup", async (HttpContext context, AppRepository repository, IAnt
 
     if (password != confirmPassword)
     {
-        return RedirectWithNotice("/setup", "A confirmação da senha não confere.");
+        return RedirectWithNotice("/setup", "A confirmaÃ§Ã£o da senha nÃ£o confere.");
     }
 
     var account = await repository.CreateUserAsync(email, displayName, Roles.Admin, password, cancellationToken);
@@ -246,7 +246,7 @@ app.MapPost("/login", async (HttpContext context, AppRepository repository, IAnt
         var body = $$"""
 <section class="login">
   <h1>Entrar</h1>
-  <div class="notice error">Email ou senha inválidos.</div>
+  <div class="notice error">Email ou senha invÃ¡lidos.</div>
   <form method="post" action="/login">
     {{antiForgeryField}}
     <div class="field">
@@ -289,7 +289,7 @@ app.MapGet("/denied", (HttpContext context, IAntiforgery antiforgery) =>
     HtmlView.Page(
         "Acesso negado",
         context.User,
-        """<h1>Acesso negado</h1><p>Seu perfil não possui permissão para esta área.</p>""",
+        """<h1>Acesso negado</h1><p>Seu perfil nÃ£o possui permissÃ£o para esta Ã¡rea.</p>""",
         antiForgeryField: AntiForgeryField(antiforgery, context),
         statusCode: StatusCodes.Status403Forbidden)
 ).RequireAuthorization();
@@ -351,7 +351,7 @@ app.MapPost("/campaigns", async (HttpContext context, AppRepository repository, 
     }
     catch (ImportException ex)
     {
-        return RedirectWithNotice($"/campaigns/{campaign.Id}", $"Campanha criada, mas a importação não foi concluída: {ex.Message}");
+        return RedirectWithNotice($"/campaigns/{campaign.Id}", $"Campanha criada, mas a importaÃ§Ã£o nÃ£o foi concluÃ­da: {ex.Message}");
     }
 }).RequireAuthorization();
 
@@ -361,13 +361,13 @@ app.MapPost("/campaigns/{id:guid}/delete", async (Guid id, HttpContext context, 
     var campaign = await repository.GetCampaignAsync(id, cancellationToken);
     if (campaign is null)
     {
-        return RedirectWithNotice("/campaigns", "Campanha não encontrada.");
+        return RedirectWithNotice("/campaigns", "Campanha nÃ£o encontrada.");
     }
 
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
     await repository.DeleteCampaignAsync(id, cancellationToken);
     await repository.AddAuditAsync(currentUser.Id, currentUser.Email, "Excluiu campanha", "Campaign", id, campaign.Name, cancellationToken);
-    return RedirectWithNotice("/campaigns", "Campanha excluída.");
+    return RedirectWithNotice("/campaigns", "Campanha excluÃ­da.");
 }).RequireAuthorization();
 
 app.MapGet("/campaigns/{id:guid}", async (Guid id, string? filter, HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
@@ -376,7 +376,7 @@ app.MapGet("/campaigns/{id:guid}", async (Guid id, string? filter, HttpContext c
     var campaign = await repository.GetCampaignAsync(id, cancellationToken);
     if (campaign is null)
     {
-        return HtmlView.Page("Campanha não encontrada", context.User, "<h1>Campanha não encontrada</h1>", antiForgeryField: antiForgeryField, pageClass: "page-campaign", headerTitle: "Campanhas", statusCode: StatusCodes.Status404NotFound);
+        return HtmlView.Page("Campanha nÃ£o encontrada", context.User, "<h1>Campanha nÃ£o encontrada</h1>", antiForgeryField: antiForgeryField, pageClass: "page-campaign", headerTitle: "Campanhas", statusCode: StatusCodes.Status404NotFound);
     }
 
     var stats = await repository.GetCampaignStatsAsync(id, cancellationToken);
@@ -392,7 +392,7 @@ app.MapPost("/campaigns/{id:guid}/import", async (Guid id, HttpContext context, 
     var campaign = await repository.GetCampaignAsync(id, cancellationToken);
     if (campaign is null)
     {
-        return RedirectWithNotice("/campaigns", "Campanha não encontrada.");
+        return RedirectWithNotice("/campaigns", "Campanha nÃ£o encontrada.");
     }
 
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
@@ -417,7 +417,7 @@ app.MapPost("/campaigns/{id:guid}/import", async (Guid id, HttpContext context, 
     try
     {
         var batch = await importService.ImportAsync(campaign, file, currentUser, sheetName, cancellationToken);
-        return RedirectWithNotice($"/campaigns/{id}", $"Importação concluída: {batch.RowCount} linhas de origem da aba {sheetName}.");
+        return RedirectWithNotice($"/campaigns/{id}", $"ImportaÃ§Ã£o concluÃ­da: {batch.RowCount} linhas de origem da aba {sheetName}.");
     }
     catch (ImportException ex)
     {
@@ -461,7 +461,7 @@ app.MapPost("/worksheets", async (HttpContext context, SpreadsheetImporter impor
             supportsSheets = false,
             defaultSheet = SpreadsheetImporter.DefaultCampaignSheetName,
             worksheets = Array.Empty<string>(),
-            notice = "Arquivos CSV ou TXT não possuem abas para selecionar."
+            notice = "Arquivos CSV ou TXT nÃ£o possuem abas para selecionar."
         });
     }
 
@@ -516,7 +516,7 @@ app.MapPost("/campaigns/{campaignId:guid}/items/approve-all", async (Guid campai
     var campaign = await repository.GetCampaignAsync(campaignId, cancellationToken);
     if (campaign is null)
     {
-        return CampaignMutationError(campaignId, "", "Campanha não encontrada.", context, 404);
+        return CampaignMutationError(campaignId, "", "Campanha nÃ£o encontrada.", context, 404);
     }
 
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
@@ -543,7 +543,7 @@ app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/save", async (Guid
     var campaign = await repository.GetCampaignAsync(campaignId, cancellationToken);
     if (campaign is null)
     {
-        return CampaignMutationError(campaignId, "", "Campanha não encontrada.", context, 404);
+        return CampaignMutationError(campaignId, "", "Campanha nÃ£o encontrada.", context, 404);
     }
 
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
@@ -578,7 +578,7 @@ app.MapPost("/campaigns/{id:guid}/export", async (Guid id, HttpContext context, 
     var campaign = await repository.GetCampaignAsync(id, cancellationToken);
     if (campaign is null)
     {
-        return RedirectWithNotice("/campaigns", "Campanha não encontrada.");
+        return RedirectWithNotice("/campaigns", "Campanha nÃ£o encontrada.");
     }
 
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
@@ -589,7 +589,7 @@ app.MapPost("/campaigns/{id:guid}/export", async (Guid id, HttpContext context, 
     }
     catch (ExportBlockedException ex)
     {
-        return RedirectWithNotice($"/campaigns/{id}", $"Exportação bloqueada: {ex.BlockedItems.Count} item(ns) com pendências.");
+        return RedirectWithNotice($"/campaigns/{id}", $"ExportaÃ§Ã£o bloqueada: {ex.BlockedItems.Count} item(ns) com pendÃªncias.");
     }
 }).RequireAuthorization();
 
@@ -611,7 +611,7 @@ app.MapGet("/catalog", async (string? q, string? category, HttpContext context, 
     var categories = await repository.ListCatalogCategoriesAsync(cancellationToken);
     var antiForgeryField = AntiForgeryField(antiforgery, context);
     var body = RenderCatalog(entries, categories, q ?? "", category ?? "", antiForgeryField);
-    return HtmlView.Page("Catálogo", context.User, body, Notice(context.Request), antiForgeryField, pageClass: "page-campaign", headerTitle: "Catálogo");
+    return HtmlView.Page("CatÃ¡logo", context.User, body, Notice(context.Request), antiForgeryField, pageClass: "page-campaign", headerTitle: "CatÃ¡logo");
 }).RequireAuthorization("AdminOnly");
 
 app.MapPost("/catalog/import", async (HttpContext context, AppRepository repository, SpreadsheetImporter importer, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
@@ -631,7 +631,7 @@ app.MapPost("/catalog/import", async (HttpContext context, AppRepository reposit
     var file = form.Files.GetFile("file");
     if (file is null)
     {
-        return RedirectWithNotice("/catalog", "Selecione o arquivo com a base de códigos.");
+        return RedirectWithNotice("/catalog", "Selecione o arquivo com a base de cÃ³digos.");
     }
 
     try
@@ -639,7 +639,7 @@ app.MapPost("/catalog/import", async (HttpContext context, AppRepository reposit
         var rows = await importer.ReadCatalogRowsAsync(file, cancellationToken);
         var count = await repository.UpsertCatalogAsync(rows, cancellationToken);
         await repository.AddAuditAsync(currentUser.Id, currentUser.Email, "Importou catalogo", "ProductCatalog", null, $"{file.FileName} ({count} registros)", cancellationToken);
-        return RedirectWithNotice("/catalog", $"Catálogo importado/atualizado: {count} registros.");
+        return RedirectWithNotice("/catalog", $"CatÃ¡logo importado/atualizado: {count} registros.");
     }
     catch (ImportException ex)
     {
@@ -664,6 +664,7 @@ app.MapPost("/rules", async (HttpContext context, AppRepository repository, IAnt
     var pattern = form["pattern"].ToString();
     var multiplierText = form["multiplier"].ToString();
     var targetUnit = form["target_unit"].ToString();
+    var categoryScope = form["category_scope"].ToString();
     var requiresReview = form["requires_review"] == "on";
 
     if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(pattern))
@@ -677,10 +678,58 @@ app.MapPost("/rules", async (HttpContext context, AppRepository repository, IAnt
     }
 
     var now = DateTimeOffset.UtcNow;
-    var rule = new ConversionRule(Guid.NewGuid(), name, type, pattern, multiplier, targetUnit, requiresReview, true, now, now);
+    var rule = new ConversionRule(Guid.NewGuid(), name, type, pattern, multiplier, targetUnit, categoryScope, requiresReview, true, now, now);
     await repository.AddRuleAsync(rule, cancellationToken);
     await repository.AddAuditAsync(currentUser.Id, currentUser.Email, "Criou regra", "ConversionRule", rule.Id, rule.Name, cancellationToken);
     return RedirectWithNotice("/rules", "Regra criada.");
+}).RequireAuthorization("AdminOnly");
+
+app.MapPost("/rules/{id:guid}/save", async (Guid id, HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
+{
+    await antiforgery.ValidateRequestAsync(context);
+    var existingRule = await repository.GetRuleAsync(id, cancellationToken);
+    if (existingRule is null)
+    {
+        return RedirectWithNotice("/rules", "Regra nao encontrada.");
+    }
+
+    var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
+    var form = await context.Request.ReadFormAsync(cancellationToken);
+    var name = form["name"].ToString();
+    var type = form["rule_type"].ToString();
+    var pattern = form["pattern"].ToString();
+    var multiplierText = form["multiplier"].ToString();
+    var targetUnit = form["target_unit"].ToString();
+    var categoryScope = form["category_scope"].ToString();
+    var requiresReview = form["requires_review"] == "on";
+
+    if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(pattern))
+    {
+        return RedirectWithNotice("/rules", "Nome, tipo e padrao sao obrigatorios.");
+    }
+
+    if (!Parsing.TryMoney(multiplierText, out var multiplier) || multiplier <= 0m)
+    {
+        multiplier = 1m;
+    }
+
+    var now = DateTimeOffset.UtcNow;
+    var updatedRule = existingRule with
+    {
+        Name = name,
+        RuleType = type,
+        Pattern = pattern,
+        Multiplier = multiplier,
+        TargetUnit = targetUnit,
+        CategoryScope = categoryScope,
+        RequiresReview = requiresReview,
+        UpdatedAt = now
+    };
+
+    await repository.UpdateRuleAsync(updatedRule, cancellationToken);
+    var auditDetails = existingRule.Name == updatedRule.Name ? updatedRule.Name : $"{existingRule.Name} -> {updatedRule.Name}";
+    await repository.AddAuditAsync(currentUser.Id, currentUser.Email, "Editou regra", "ConversionRule", updatedRule.Id, auditDetails, cancellationToken);
+    return RedirectWithNotice("/rules", "Regra atualizada.");
 }).RequireAuthorization("AdminOnly");
 
 app.MapPost("/rules/{id:guid}/toggle", async (Guid id, HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
@@ -696,7 +745,7 @@ app.MapGet("/history", async (HttpContext context, AppRepository repository, IAn
 {
     var exports = await repository.ListExportsAsync(cancellationToken);
     var logs = await repository.ListAuditLogsAsync(cancellationToken);
-    return HtmlView.Page("Histórico", context.User, RenderHistory(exports, logs), antiForgeryField: AntiForgeryField(antiforgery, context), pageClass: "page-campaign", headerTitle: "Histórico");
+    return HtmlView.Page("HistÃ³rico", context.User, RenderHistory(exports, logs), antiForgeryField: AntiForgeryField(antiforgery, context), pageClass: "page-campaign", headerTitle: "HistÃ³rico");
 }).RequireAuthorization();
 
 app.Run();
@@ -724,25 +773,25 @@ static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, Campaign
       </div>
       <div class="field-grid two">
         <div class="field">
-          <label>Vigência início</label>
+          <label>VigÃªncia inÃ­cio</label>
           <input name="valid_from" type="date" data-date-picker required>
         </div>
         <div class="field">
-          <label>Vigência fim</label>
+          <label>VigÃªncia fim</label>
           <input name="valid_to" type="date" data-date-picker required>
         </div>
       </div>
       <div class="field">
         <label>Arquivo inicial</label>
         <input type="file" name="file" accept=".csv,.txt,.xlsx,.xlsm" data-sheet-file>
-        <p class="hint">Opcional. Se você anexar o arquivo agora, a campanha já será criada com a importação feita em seguida.</p>
+        <p class="hint">Opcional. Se vocÃª anexar o arquivo agora, a campanha jÃ¡ serÃ¡ criada com a importaÃ§Ã£o feita em seguida.</p>
       </div>
       <div class="field">
         <label>Aba da planilha para importar</label>
         <select name="sheet_name" data-sheet-select>
           <option value="Base Clube - CLT">Base Clube - CLT</option>
         </select>
-        <p class="hint" data-sheet-hint>Selecione um arquivo XLSX ou XLSM para carregar automaticamente as abas disponíveis. Em CSV, esse campo fica apenas informativo.</p>
+        <p class="hint" data-sheet-hint>Selecione um arquivo XLSX ou XLSM para carregar automaticamente as abas disponÃ­veis. Em CSV, esse campo fica apenas informativo.</p>
       </div>
       <div class="form-actions">
         <button type="submit">Criar campanha</button>
@@ -754,7 +803,7 @@ static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, Campaign
     <div class="panel-header">
       <div>
         <h2>Campanhas criadas</h2>
-        <p class="panel-subtitle">Acompanhe a vigência, o status operacional e o volume de pendências sem precisar abrir cada campanha primeiro.</p>
+        <p class="panel-subtitle">Acompanhe a vigÃªncia, o status operacional e o volume de pendÃªncias sem precisar abrir cada campanha primeiro.</p>
       </div>
 """);
     body.AppendLine($"""      {HtmlView.Badge($"{campaigns.Count} campanha(s)", campaigns.Count == 0 ? "" : "info")}""");
@@ -774,7 +823,7 @@ static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, Campaign
     <div class="campaign-list">
       <div class="campaign-list-head">
         <div>Campanha</div>
-        <div>Vigência</div>
+        <div>VigÃªncia</div>
         <div>Status</div>
         <div>Itens</div>
         <div>Pendencias</div>
@@ -785,8 +834,8 @@ static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, Campaign
     foreach (var entry in campaigns)
     {
         var pendingHtml = entry.Stats.BlockingItems == 0
-            ? HtmlView.Badge("Sem pendências", "ok")
-            : HtmlView.Badge($"{entry.Stats.BlockingItems} pendência(s)", entry.Stats.BlockingItems >= 10 ? "danger" : "warn");
+            ? HtmlView.Badge("Sem pendÃªncias", "ok")
+            : HtmlView.Badge($"{entry.Stats.BlockingItems} pendÃªncia(s)", entry.Stats.BlockingItems >= 10 ? "danger" : "warn");
 
         body.AppendLine($"""
       <article class="campaign-row">
@@ -794,7 +843,7 @@ static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, Campaign
           <strong>{HtmlView.E(entry.Campaign.Name)}</strong>
           <span class="muted">Criada em {entry.Campaign.CreatedAt:dd/MM/yyyy HH:mm}</span>
         </div>
-        <div class="campaign-cell" data-label="Vigência">
+        <div class="campaign-cell" data-label="VigÃªncia">
           <strong>{entry.Campaign.ValidFrom:dd/MM/yyyy} a {entry.Campaign.ValidTo:dd/MM/yyyy}</strong>
           <span class="muted">{DaysBetween(entry.Campaign.ValidFrom, entry.Campaign.ValidTo)}</span>
         </div>
@@ -803,11 +852,11 @@ static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, Campaign
           <strong>{entry.Stats.TotalItems}</strong>
           <span class="muted">itens carregados</span>
         </div>
-        <div class="campaign-cell" data-label="Pendências">{pendingHtml}</div>
+        <div class="campaign-cell" data-label="PendÃªncias">{pendingHtml}</div>
         <div class="campaign-cell campaign-action" data-label="Acoes">
           <div class="inline-actions">
             <a class="button secondary" href="/campaigns/{entry.Campaign.Id}">Abrir</a>
-            <form method="post" action="/campaigns/{entry.Campaign.Id}/delete" onsubmit="return confirm('Excluir esta campanha? Essa ação remove itens, revisões e exportações ligadas a ela.');">
+            <form method="post" action="/campaigns/{entry.Campaign.Id}/delete" onsubmit="return confirm('Excluir esta campanha? Essa aÃ§Ã£o remove itens, revisÃµes e exportaÃ§Ãµes ligadas a ela.');">
               {antiForgeryField}
               <button class="danger" type="submit">Excluir</button>
             </form>
@@ -858,13 +907,13 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
   <div class="panel-header">
     <div>
       <h2>Importar e revisar itens</h2>
-      <p class="panel-subtitle">Corrija descrição, código de barras, quantidade e preço diretamente aqui quando precisar ajustar um item sem reimportar a planilha inteira.</p>
+      <p class="panel-subtitle">Corrija descriÃ§Ã£o, cÃ³digo de barras, quantidade e preÃ§o diretamente aqui quando precisar ajustar um item sem reimportar a planilha inteira.</p>
     </div>
   </div>
   <form method="post" action="/campaigns/{campaign.Id}/import" enctype="multipart/form-data" data-sheet-selector-form>
     {antiForgeryField}
     <div class="field"><label>Arquivo CSV, XLSX ou XLSM com layout fixo</label><input type="file" name="file" accept=".csv,.txt,.xlsx,.xlsm" data-sheet-file required></div>
-    <div class="field"><label>Aba da planilha para importar</label><select name="sheet_name" data-sheet-select><option value="Base Clube - CLT">Base Clube - CLT</option></select><p class="hint" data-sheet-hint>Escolha o arquivo para listar as abas disponíveis e importar a campanha já gerada dentro da planilha.</p></div>
+    <div class="field"><label>Aba da planilha para importar</label><select name="sheet_name" data-sheet-select><option value="Base Clube - CLT">Base Clube - CLT</option></select><p class="hint" data-sheet-hint>Escolha o arquivo para listar as abas disponÃ­veis e importar a campanha jÃ¡ gerada dentro da planilha.</p></div>
     <button type="submit">Importar e validar</button>
   </form>
   <div class="toolbar">{exportButton}{approveAllButton}</div>
@@ -873,8 +922,8 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
   <a class="{FilterButtonClass("", normalizedFilter)}" href="/campaigns/{campaign.Id}">Todos</a>
   <a class="{FilterButtonClass("bloqueado", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=bloqueado">Bloqueados</a>
   <a class="{FilterButtonClass("pendente", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=pendente">Revisao</a>
-  <a class="{FilterButtonClass("sem-codigo", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=sem-codigo">Sem código</a>
-  <a class="{FilterButtonClass("pesavel", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=pesavel">Pesáveis</a>
+  <a class="{FilterButtonClass("sem-codigo", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=sem-codigo">Sem cÃ³digo</a>
+  <a class="{FilterButtonClass("pesavel", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=pesavel">PesÃ¡veis</a>
   <a class="{FilterButtonClass("fardo", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=fardo">Fardos/caixas</a>
   <a class="{FilterButtonClass("duplicado", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=duplicado">Duplicidade</a>
   <span class="muted">Filtro atual: {HtmlView.E(DisplayFilter(normalizedFilter))}</span>
@@ -883,8 +932,8 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
 <table>
   <thead>
     <tr>
-      <th>Status</th><th>Riscos</th><th>Linha</th><th>Descrição tabloide</th><th>Descrição Solidus</th>
-      <th>Código</th><th>Preço original</th><th>Preço final</th><th>Qtd.</th><th>Pendências</th><th>Ações</th>
+      <th>Status</th><th>Riscos</th><th>Linha</th><th>DescriÃ§Ã£o tabloide</th><th>DescriÃ§Ã£o Solidus</th>
+      <th>CÃ³digo</th><th>PreÃ§o original</th><th>PreÃ§o final</th><th>Qtd.</th><th>PendÃªncias</th><th>AÃ§Ãµes</th>
     </tr>
   </thead>
   <tbody id="campaign-items-body">
@@ -923,30 +972,6 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
     noticeRoot.appendChild(box);
   };
 
-  document.addEventListener('click', (event) => {
-    const toggle = event.target.closest('[data-edit-toggle]');
-    if (toggle) {
-      const target = document.getElementById(toggle.dataset.editToggle);
-      if (!target) {
-        return;
-      }
-
-      target.hidden = !target.hidden;
-      if (!target.hidden) {
-        target.querySelector('input, select, textarea, button')?.focus();
-      }
-      return;
-    }
-
-    const close = event.target.closest('[data-edit-close]');
-    if (close) {
-      const target = document.getElementById(close.dataset.editClose);
-      if (target) {
-        target.hidden = true;
-      }
-    }
-  });
-
   document.addEventListener('submit', async (event) => {
     const form = event.target;
     if (!(form instanceof HTMLFormElement) || !form.classList.contains('async-campaign-form')) {
@@ -976,7 +1001,7 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
 
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
-        setNotice(payload.notice || 'Não foi possível concluir a ação.', true);
+        setNotice(payload.notice || 'NÃ£o foi possÃ­vel concluir a aÃ§Ã£o.', true);
         return;
       }
 
@@ -988,7 +1013,7 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
         tableBody.innerHTML = payload.tableBodyHtml;
       }
 
-      setNotice(payload.notice || 'Atualização concluída.', false);
+      setNotice(payload.notice || 'AtualizaÃ§Ã£o concluÃ­da.', false);
       window.scrollTo({ top: previousScroll });
     }
     catch {
@@ -1014,7 +1039,7 @@ static string RenderCampaignStats(CampaignStats stats)
   <div class="stat"><strong>{stats.TotalItems}</strong><span>Itens</span></div>
   <div class="stat"><strong>{stats.BlockingItems}</strong><span>Bloqueados</span></div>
   <div class="stat"><strong>{stats.PendingReviewItems}</strong><span>Revisao</span></div>
-  <div class="stat"><strong>{stats.MissingCodeItems}</strong><span>Sem código</span></div>
+  <div class="stat"><strong>{stats.MissingCodeItems}</strong><span>Sem cÃ³digo</span></div>
   <div class="stat"><strong>{stats.WeightedItems}</strong><span>Pesaveis</span></div>
   <div class="stat"><strong>{stats.PackageItems}</strong><span>Fardos/caixas</span></div>
 </div>
@@ -1063,7 +1088,7 @@ static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, strin
 """
         : $"""
 <div class="inline-actions">
-  <span class="muted">Sem revisão pendente</span>
+  <span class="muted">Sem revisÃ£o pendente</span>
   <button class="ghost" type="button" data-edit-toggle="edit-{item.Id}">Editar</button>
 </div>
 """;
@@ -1090,15 +1115,15 @@ static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, strin
         {filterField}
         <div class="item-edit-grid">
           <div class="field span-2">
-            <label>Descrição tabloide</label>
+            <label>DescriÃ§Ã£o tabloide</label>
             <input name="description_tabloid" value="{HtmlView.E(item.DescriptionTabloid)}" required>
           </div>
           <div class="field">
-            <label>Código de barras</label>
+            <label>CÃ³digo de barras</label>
             <input name="barcode" value="{HtmlView.E(item.Barcode)}">
           </div>
           <div class="field span-2">
-            <label>Descrição Solidus</label>
+            <label>DescriÃ§Ã£o Solidus</label>
             <input name="description_solidus" value="{HtmlView.E(item.DescriptionSolidus)}">
           </div>
           <div class="field">
@@ -1106,18 +1131,18 @@ static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, strin
             <input name="quantity_raw" value="{HtmlView.E(item.QuantityRaw)}" placeholder="5 Kg ou 12 Unidades">
           </div>
           <div class="field">
-            <label>Preço venda</label>
+            <label>PreÃ§o venda</label>
             <input name="price_sale" value="{HtmlView.E(Parsing.MoneyPtBr(item.FinalPriceSale))}">
           </div>
           <div class="field">
-            <label>Preço clube</label>
+            <label>PreÃ§o clube</label>
             <input name="price_club" value="{HtmlView.E(Parsing.MoneyPtBr(item.FinalPriceClub))}">
           </div>
           <div class="field span-3">
             <div class="form-actions">
-              <button type="submit" data-busy-label="Salvando...">Salvar alterações</button>
+              <button type="submit" data-busy-label="Salvando...">Salvar alteraÃ§Ãµes</button>
               <button class="secondary" type="button" data-edit-close="edit-{item.Id}">Fechar</button>
-              <span class="muted">Se a descrição corrigida bater exatamente com o catálogo, o sistema tenta preencher o código automaticamente.</span>
+              <span class="muted">Se a descriÃ§Ã£o corrigida bater exatamente com o catÃ¡logo, o sistema tenta preencher o cÃ³digo automaticamente.</span>
             </div>
           </div>
         </div>
@@ -1135,13 +1160,13 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
     var totalCatalogItems = categories.Sum(x => x.Count);
     var body = new StringBuilder();
     body.AppendLine($$"""
-<h1>Catálogo de produtos</h1>
+<h1>CatÃ¡logo de produtos</h1>
 <div class="catalog-layout">
   <aside class="panel catalog-sidebar">
     <div class="panel-header">
       <div>
-        <h2>Navegação</h2>
-        <p class="panel-subtitle">Explore todo o catálogo por busca ou categoria, sem depender da tabela limitada.</p>
+        <h2>NavegaÃ§Ã£o</h2>
+        <p class="panel-subtitle">Explore todo o catÃ¡logo por busca ou categoria, sem depender da tabela limitada.</p>
       </div>
     </div>
     <div class="catalog-sidebar-section">
@@ -1159,7 +1184,7 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
       </div>
     </div>
     <div class="catalog-sidebar-section">
-      <h2>Importar base de códigos</h2>
+      <h2>Importar base de cÃ³digos</h2>
     <form method="post" action="/catalog/import" enctype="multipart/form-data">
       {{antiForgeryField}}
       <div class="field"><label>Arquivo com aba Base - Cod Barras ou CSV equivalente</label><input type="file" name="file" accept=".csv,.txt,.xlsx,.xlsm" required></div>
@@ -1169,7 +1194,7 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
     <div class="catalog-sidebar-section">
       <h2>Buscar</h2>
       <form method="get" action="/catalog">
-      <div class="field"><label>Descrição, Solidus ou código</label><input name="q" value="
+      <div class="field"><label>DescriÃ§Ã£o, Solidus ou cÃ³digo</label><input name="q" value="
 """);
     body.Append(HtmlView.E(query));
     body.AppendLine($$"""
@@ -1207,7 +1232,7 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
   <section class="panel">
     <div class="panel-header">
       <div>
-        <h2>Itens do catálogo</h2>
+        <h2>Itens do catÃ¡logo</h2>
         <p class="panel-subtitle">Categoria atual: {{HtmlView.E(selectedCategoryLabel)}}.</p>
       </div>
       {{HtmlView.Badge($"{entries.Count} item(ns)", entries.Count == 0 ? "" : "info")}}
@@ -1222,11 +1247,11 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
       <article class="catalog-item">
         <div class="catalog-item-main">
           <strong>{HtmlView.E(entry.DescriptionTabloid)}</strong>
-          <span>{HtmlView.E(string.IsNullOrWhiteSpace(entry.DescriptionSolidus) ? "Sem descrição Solidus" : entry.DescriptionSolidus)}</span>
+          <span>{HtmlView.E(string.IsNullOrWhiteSpace(entry.DescriptionSolidus) ? "Sem descriÃ§Ã£o Solidus" : entry.DescriptionSolidus)}</span>
         </div>
         <div class="catalog-item-meta">
           <div><label>Categoria</label><span>{HtmlView.E(string.IsNullOrWhiteSpace(entry.Category) ? "Sem categoria" : entry.Category)}</span></div>
-          <div><label>Código</label><span class="mono">{HtmlView.E(entry.Barcode)}</span></div>
+          <div><label>CÃ³digo</label><span class="mono">{HtmlView.E(entry.Barcode)}</span></div>
           <div><label>Tipo</label><span>{HtmlView.E(entry.CodeType)}</span></div>
         </div>
       </article>
@@ -1252,25 +1277,26 @@ static string RenderRules(IReadOnlyList<ConversionRule> rules, string antiForger
 {
     var body = new StringBuilder();
     body.AppendLine($$"""
-<h1>Regras de conversao</h1>
+<h1>Regras de convers&atilde;o</h1>
 <div class="grid two">
   <section class="panel">
     <h2>Nova regra</h2>
     <form method="post" action="/rules">
       {{antiForgeryField}}
       <div class="field"><label>Nome</label><input name="name" required></div>
-      <div class="field"><label>Tipo</label><select name="rule_type"><option value="Pesavel">Pesavel</option><option value="FardoCaixa">Fardo/caixa</option></select></div>
-      <div class="field"><label>Padrao Regex ou texto</label><input name="pattern" required></div>
+      <div class="field"><label>Tipo</label><select name="rule_type"><option value="Pesavel">Pes&aacute;vel</option><option value="Fardo">Fardo</option><option value="Caixa">Caixa</option></select></div>
+      <div class="field"><label>Padr&atilde;o Regex ou texto</label><input name="pattern" required></div>
       <div class="field"><label>Multiplicador</label><input name="multiplier" value="1"></div>
       <div class="field"><label>Unidade alvo</label><input name="target_unit" placeholder="Kg"></div>
-      <div class="field"><label><input style="width:auto" type="checkbox" name="requires_review" checked> Exigir revisão</label></div>
+      <div class="field"><label>Categorias alvo</label><input name="category_scope" placeholder="Ex.: Hortifruti, Bebidas"><p class="hint">Opcional. Informe uma ou mais categorias separadas por v&iacute;rgula para restringir a regra.</p></div>
+      <div class="field"><label><input style="width:auto" type="checkbox" name="requires_review" checked> Exigir revis&atilde;o</label></div>
       <button type="submit">Criar regra</button>
     </form>
   </section>
   <section>
     <div class="tablewrap">
       <table>
-        <thead><tr><th>Status</th><th>Nome</th><th>Tipo</th><th>Padrao</th><th>Multiplicador</th><th>Unidade</th><th>Revisao</th><th></th></tr></thead>
+        <thead><tr><th>Status</th><th>Nome</th><th>Tipo</th><th>Padr&atilde;o</th><th>Multiplicador</th><th>Unidade</th><th>Categorias</th><th>Revis&atilde;o</th><th></th></tr></thead>
         <tbody>
 """);
 
@@ -1280,12 +1306,66 @@ static string RenderRules(IReadOnlyList<ConversionRule> rules, string antiForger
 <tr>
   <td>{HtmlView.Badge(rule.IsActive ? "Ativa" : "Inativa", rule.IsActive ? "ok" : "")}</td>
   <td>{HtmlView.E(rule.Name)}</td>
-  <td>{HtmlView.E(rule.RuleType)}</td>
+  <td>{HtmlView.E(DisplayRuleType(rule.RuleType))}</td>
   <td class="mono">{HtmlView.E(rule.Pattern)}</td>
   <td>{rule.Multiplier:0.####}</td>
-  <td>{HtmlView.E(rule.TargetUnit)}</td>
-  <td>{(rule.RequiresReview ? "Sim" : "Nao")}</td>
-  <td><form method="post" action="/rules/{rule.Id}/toggle">{antiForgeryField}<button class="secondary" type="submit">Alternar</button></form></td>
+  <td>{HtmlView.E(string.IsNullOrWhiteSpace(rule.TargetUnit) ? "-" : rule.TargetUnit)}</td>
+  <td>{HtmlView.E(string.IsNullOrWhiteSpace(rule.CategoryScope) ? "Todas" : rule.CategoryScope)}</td>
+  <td>{(rule.RequiresReview ? "Sim" : "N\u00E3o")}</td>
+  <td>
+    <div class="inline-actions">
+      <button class="ghost" type="button" data-edit-toggle="edit-{rule.Id}">Editar</button>
+      <form method="post" action="/rules/{rule.Id}/toggle">{antiForgeryField}<button class="secondary" type="submit">Alternar</button></form>
+    </div>
+  </td>
+</tr>
+<tr class="item-edit-row" id="edit-{rule.Id}" hidden>
+  <td colspan="9">
+    <div class="item-edit-card">
+      <form method="post" action="/rules/{rule.Id}/save">
+        {antiForgeryField}
+        <div class="item-edit-grid">
+          <div class="field span-2">
+            <label>Nome</label>
+            <input name="name" value="{HtmlView.E(rule.Name)}" required>
+          </div>
+          <div class="field">
+            <label>Tipo</label>
+            <select name="rule_type">
+              {RenderRuleTypeOptions(rule.RuleType)}
+            </select>
+          </div>
+          <div class="field span-2">
+            <label>Padr&atilde;o Regex ou texto</label>
+            <input name="pattern" value="{HtmlView.E(rule.Pattern)}" required>
+          </div>
+          <div class="field">
+            <label>Multiplicador</label>
+            <input name="multiplier" value="{HtmlView.E(Parsing.MoneyPtBr(rule.Multiplier))}">
+          </div>
+          <div class="field">
+            <label>Unidade alvo</label>
+            <input name="target_unit" value="{HtmlView.E(rule.TargetUnit)}" placeholder="Kg">
+          </div>
+          <div class="field span-2">
+            <label>Categorias alvo</label>
+            <input name="category_scope" value="{HtmlView.E(rule.CategoryScope)}" placeholder="Ex.: Hortifruti, Bebidas">
+            <p class="hint">Opcional. Informe uma ou mais categorias separadas por v&iacute;rgula para restringir a regra.</p>
+          </div>
+          <div class="field span-3">
+            <label><input style="width:auto" type="checkbox" name="requires_review" {(rule.RequiresReview ? "checked" : "")}> Exigir revis&atilde;o</label>
+          </div>
+          <div class="field span-3">
+            <div class="form-actions">
+              <button type="submit">Salvar altera&ccedil;&otilde;es</button>
+              <button class="secondary" type="button" data-edit-close="edit-{rule.Id}">Fechar</button>
+              <span class="muted">O status continua sendo alterado pelo bot&atilde;o Alternar.</span>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  </td>
 </tr>
 """);
     }
@@ -1294,13 +1374,35 @@ static string RenderRules(IReadOnlyList<ConversionRule> rules, string antiForger
     return body.ToString();
 }
 
+static string RenderRuleTypeOptions(string selectedRuleType)
+{
+    var body = new StringBuilder();
+
+    if (selectedRuleType != RuleTypes.Weighted && selectedRuleType != RuleTypes.PackageBale && selectedRuleType != RuleTypes.PackageBox)
+    {
+        body.AppendLine($"""<option value="{HtmlView.E(selectedRuleType)}" selected>{HtmlView.E(DisplayRuleType(selectedRuleType))}</option>""");
+    }
+
+    body.AppendLine(RenderRuleTypeOption(RuleTypes.Weighted, selectedRuleType));
+    body.AppendLine(RenderRuleTypeOption(RuleTypes.PackageBale, selectedRuleType));
+    body.AppendLine(RenderRuleTypeOption(RuleTypes.PackageBox, selectedRuleType));
+
+    return body.ToString();
+}
+
+static string RenderRuleTypeOption(string ruleType, string selectedRuleType)
+{
+    var selected = ruleType == selectedRuleType ? " selected" : "";
+    return $"""<option value="{ruleType}"{selected}>{HtmlView.E(DisplayRuleType(ruleType))}</option>""";
+}
+
 static string RenderHistory(IReadOnlyList<ExportBatch> exports, IReadOnlyList<AuditLog> logs)
 {
     var body = new StringBuilder();
-    body.AppendLine("<h1>Histórico</h1>");
+    body.AppendLine("<h1>HistÃ³rico</h1>");
     body.AppendLine("""
 <section class="panel">
-  <h2>Exportações</h2>
+  <h2>ExportaÃ§Ãµes</h2>
   <div class="tablewrap"><table><thead><tr><th>Arquivo</th><th>Linhas</th><th>Data</th><th></th></tr></thead><tbody>
 """);
 
@@ -1311,7 +1413,7 @@ static string RenderHistory(IReadOnlyList<ExportBatch> exports, IReadOnlyList<Au
 
     if (exports.Count == 0)
     {
-        body.AppendLine("""<tr><td colspan="4" class="muted">Nenhuma exportação registrada.</td></tr>""");
+        body.AppendLine("""<tr><td colspan="4" class="muted">Nenhuma exportaÃ§Ã£o registrada.</td></tr>""");
     }
 
     body.AppendLine("</tbody></table></div></section>");
@@ -1333,6 +1435,18 @@ static string RenderHistory(IReadOnlyList<ExportBatch> exports, IReadOnlyList<Au
 
     body.AppendLine("</tbody></table></div></section>");
     return body.ToString();
+}
+
+static string DisplayRuleType(string ruleType)
+{
+    return ruleType switch
+    {
+        RuleTypes.Weighted => "Pes\u00E1vel",
+        RuleTypes.PackageBale => "Fardo",
+        RuleTypes.PackageBox => "Caixa",
+        RuleTypes.Package => "Fardo/Caixa (legado)",
+        _ => ruleType
+    };
 }
 
 static IEnumerable<CampaignItem> ApplyFilter(IReadOnlyList<CampaignItem> items, string? filter)
@@ -1366,7 +1480,7 @@ static async Task<IResult> CampaignMutationResultAsync(
     var campaign = await repository.GetCampaignAsync(campaignId, cancellationToken);
     if (campaign is null)
     {
-        return Results.Json(new { ok = false, notice = "Campanha não encontrada." }, statusCode: StatusCodes.Status404NotFound);
+        return Results.Json(new { ok = false, notice = "Campanha nÃ£o encontrada." }, statusCode: StatusCodes.Status404NotFound);
     }
 
     var stats = await repository.GetCampaignStatsAsync(campaignId, cancellationToken);
@@ -1399,11 +1513,11 @@ static async Task<UserAccount> CurrentUserAsync(HttpContext context, AppReposito
     var idValue = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
     if (!Guid.TryParse(idValue, out var id))
     {
-        throw new InvalidOperationException("Usuário atual inválido.");
+        throw new InvalidOperationException("UsuÃ¡rio atual invÃ¡lido.");
     }
 
     return await repository.GetUserByIdAsync(id, cancellationToken)
-        ?? throw new InvalidOperationException("Usuário atual não encontrado.");
+        ?? throw new InvalidOperationException("UsuÃ¡rio atual nÃ£o encontrado.");
 }
 
 static bool TryDate(string value, out DateOnly date)
@@ -1415,8 +1529,8 @@ static string DaysBetween(DateOnly start, DateOnly end)
 {
     var totalDays = end.DayNumber - start.DayNumber + 1;
     return totalDays <= 1
-        ? "1 dia de vigência"
-        : $"{totalDays} dias de vigência";
+        ? "1 dia de vigÃªncia"
+        : $"{totalDays} dias de vigÃªncia";
 }
 
 static bool IsReviewableItem(CampaignItem item)

@@ -292,7 +292,7 @@ DO UPDATE SET
         var rules = new List<ConversionRule>();
         await using var connection = await db.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
-SELECT id, name, rule_type, pattern, multiplier, target_unit, requires_review, is_active, created_at, updated_at
+SELECT id, name, rule_type, pattern, multiplier, target_unit, category_scope, requires_review, is_active, created_at, updated_at
 FROM conversion_rules
 ORDER BY rule_type, name;
 """, connection);
@@ -306,14 +306,34 @@ ORDER BY rule_type, name;
         return rules;
     }
 
+    public async Task<ConversionRule?> GetRuleAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await db.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+SELECT id, name, rule_type, pattern, multiplier, target_unit, category_scope, requires_review, is_active, created_at, updated_at
+FROM conversion_rules
+WHERE id = @id
+LIMIT 1;
+""", connection);
+        command.Parameters.AddWithValue("@id", id);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            return ReadRule(reader);
+        }
+
+        return null;
+    }
+
     public async Task AddRuleAsync(ConversionRule rule, CancellationToken cancellationToken = default)
     {
         await using var connection = await db.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
 INSERT INTO conversion_rules
-    (id, name, rule_type, pattern, multiplier, target_unit, requires_review, is_active, created_at, updated_at)
+    (id, name, rule_type, pattern, multiplier, target_unit, category_scope, requires_review, is_active, created_at, updated_at)
 VALUES
-    (@id, @name, @rule_type, @pattern, @multiplier, @target_unit, @requires_review, @is_active, @created_at, @updated_at);
+    (@id, @name, @rule_type, @pattern, @multiplier, @target_unit, @category_scope, @requires_review, @is_active, @created_at, @updated_at);
 """, connection);
         command.Parameters.AddWithValue("@id", rule.Id);
         command.Parameters.AddWithValue("@name", rule.Name);
@@ -321,10 +341,54 @@ VALUES
         command.Parameters.AddWithValue("@pattern", rule.Pattern);
         command.Parameters.AddWithValue("@multiplier", rule.Multiplier);
         command.Parameters.AddWithValue("@target_unit", rule.TargetUnit);
+        command.Parameters.AddWithValue("@category_scope", rule.CategoryScope);
         command.Parameters.AddWithValue("@requires_review", rule.RequiresReview);
         command.Parameters.AddWithValue("@is_active", rule.IsActive);
         command.Parameters.AddWithValue("@created_at", rule.CreatedAt);
         command.Parameters.AddWithValue("@updated_at", rule.UpdatedAt);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task UpdateRuleAsync(ConversionRule rule, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await db.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+UPDATE conversion_rules
+SET name = @name,
+    rule_type = @rule_type,
+    pattern = @pattern,
+    multiplier = @multiplier,
+    target_unit = @target_unit,
+    category_scope = @category_scope,
+    requires_review = @requires_review,
+    is_active = @is_active,
+    updated_at = @updated_at
+WHERE id = @id;
+""", connection);
+        command.Parameters.AddWithValue("@id", rule.Id);
+        command.Parameters.AddWithValue("@name", rule.Name);
+        command.Parameters.AddWithValue("@rule_type", rule.RuleType);
+        command.Parameters.AddWithValue("@pattern", rule.Pattern);
+        command.Parameters.AddWithValue("@multiplier", rule.Multiplier);
+        command.Parameters.AddWithValue("@target_unit", rule.TargetUnit);
+        command.Parameters.AddWithValue("@category_scope", rule.CategoryScope);
+        command.Parameters.AddWithValue("@requires_review", rule.RequiresReview);
+        command.Parameters.AddWithValue("@is_active", rule.IsActive);
+        command.Parameters.AddWithValue("@updated_at", rule.UpdatedAt);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task SetRuleActiveAsync(Guid id, bool isActive, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await db.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+UPDATE conversion_rules
+SET is_active = @is_active, updated_at = @updated_at
+WHERE id = @id;
+""", connection);
+        command.Parameters.AddWithValue("@id", id);
+        command.Parameters.AddWithValue("@is_active", isActive);
+        command.Parameters.AddWithValue("@updated_at", DateTimeOffset.UtcNow);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -696,10 +760,11 @@ LIMIT 100;
             reader.GetString(3),
             reader.GetDecimal(4),
             reader.GetString(5),
-            reader.GetBoolean(6),
+            reader.GetString(6),
             reader.GetBoolean(7),
-            reader.GetFieldValue<DateTimeOffset>(8),
-            reader.GetFieldValue<DateTimeOffset>(9));
+            reader.GetBoolean(8),
+            reader.GetFieldValue<DateTimeOffset>(9),
+            reader.GetFieldValue<DateTimeOffset>(10));
     }
 
     private static CampaignItem ReadCampaignItem(NpgsqlDataReader reader)

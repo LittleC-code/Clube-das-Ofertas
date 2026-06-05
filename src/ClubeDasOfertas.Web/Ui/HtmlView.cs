@@ -927,6 +927,30 @@ public static class HtmlView
           }
         });
       });
+
+      document.addEventListener('click', (event) => {
+        const toggle = event.target.closest('[data-edit-toggle]');
+        if (toggle) {
+          const target = document.getElementById(toggle.dataset.editToggle);
+          if (!target) {
+            return;
+          }
+
+          target.hidden = !target.hidden;
+          if (!target.hidden) {
+            target.querySelector('input, select, textarea, button')?.focus();
+          }
+          return;
+        }
+
+        const close = event.target.closest('[data-edit-close]');
+        if (close) {
+          const target = document.getElementById(close.dataset.editClose);
+          if (target) {
+            target.hidden = true;
+          }
+        }
+      });
     })();
   </script>
 </body>

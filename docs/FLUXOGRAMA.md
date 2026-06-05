@@ -278,7 +278,7 @@ Olhar nesta ordem:
 - [CampaignImportService.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Services/CampaignImportService.cs>)
 - [Parsing.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Services/Parsing.cs>)
 - [SchemaInitializer.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/SchemaInitializer.cs>): regras padrao
-- tela `/rules`
+- tela `/rules` (criar, editar e alternar)
 
 Casos tipicos:
 
