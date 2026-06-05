@@ -6,6 +6,14 @@ namespace ClubeDasOfertas.Web.Data;
 
 public sealed class AppRepository(AppDb db)
 {
+    public async Task<bool> HasUsersAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await db.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT EXISTS (SELECT 1 FROM users);", connection);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is true;
+    }
+
     public async Task<UserAccount?> GetUserByEmailAsync(string email, CancellationToken cancellationToken = default)
     {
         await using var connection = await db.OpenAsync(cancellationToken);
@@ -43,19 +51,36 @@ LIMIT 1;
             return;
         }
 
+        await CreateUserAsync(email, displayName, role, password, cancellationToken);
+    }
+
+    public async Task<UserAccount> CreateUserAsync(string email, string displayName, string role, string password, CancellationToken cancellationToken = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var user = new UserAccount(
+            Guid.NewGuid(),
+            email.Trim(),
+            displayName.Trim(),
+            PasswordHasher.Hash(password),
+            role,
+            true,
+            now);
+
         await using var connection = await db.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
 INSERT INTO users (id, email, display_name, password_hash, role, is_active, created_at)
 VALUES (@id, @email, @display_name, @password_hash, @role, true, @created_at)
 ON CONFLICT (email) DO NOTHING;
 """, connection);
-        command.Parameters.AddWithValue("@id", Guid.NewGuid());
-        command.Parameters.AddWithValue("@email", email.Trim());
-        command.Parameters.AddWithValue("@display_name", displayName.Trim());
-        command.Parameters.AddWithValue("@password_hash", PasswordHasher.Hash(password));
-        command.Parameters.AddWithValue("@role", role);
-        command.Parameters.AddWithValue("@created_at", DateTimeOffset.UtcNow);
+        command.Parameters.AddWithValue("@id", user.Id);
+        command.Parameters.AddWithValue("@email", user.Email);
+        command.Parameters.AddWithValue("@display_name", user.DisplayName);
+        command.Parameters.AddWithValue("@password_hash", user.PasswordHash);
+        command.Parameters.AddWithValue("@role", user.Role);
+        command.Parameters.AddWithValue("@created_at", user.CreatedAt);
         await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return user;
     }
 
     public async Task<IReadOnlyList<Campaign>> ListCampaignsAsync(CancellationToken cancellationToken = default)

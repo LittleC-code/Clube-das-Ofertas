@@ -2,6 +2,7 @@ bin/
 obj/
 .vs/
 *.user
+.env
 
 app-run*.log
 curl-cookies.txt

@@ -6,8 +6,8 @@ Este documento explica como o sistema funciona de ponta a ponta, o que cada part
 
 O sistema tem 4 blocos principais:
 
-1. `Program.cs`: recebe as requisicoes HTTP, faz login, chama servicos e monta as telas.
-2. `Services/`: aplica a regra de negocio.
+1. `Program.cs`: recebe as requisicoes HTTP, faz login, protege formularios, chama servicos e monta as telas.
+2. `Services/`: aplica a regra de negocio de importacao, revisao e exportacao.
 3. `Data/`: fala com PostgreSQL, cria schema, le e grava dados.
 4. `Ui/HtmlView.cs`: gera o HTML das paginas.
 
@@ -15,31 +15,37 @@ O sistema tem 4 blocos principais:
 
 ```mermaid
 flowchart TD
-    A[Usuario abre o sistema] --> B[/login]
-    B --> C{Credenciais validas?}
-    C -- Nao --> B
-    C -- Sim --> D[/campaigns]
+    A[Usuario abre o sistema] --> B{Existe usuario?}
+    B -- Nao --> C[/setup]
+    B -- Sim --> D[/login]
+    C --> E[Criar primeiro administrador]
+    E --> F[Salvar usuario no banco]
+    F --> G[/campaigns]
+    D --> H{Credenciais validas?}
+    H -- Nao --> D
+    H -- Sim --> G
 
-    D --> E[Criar campanha]
-    E --> F[Salvar campanha no banco]
+    G --> I[Criar campanha]
+    I --> J[Salvar campanha no banco]
 
-    D --> G[Importar arquivo CSV/XLSX/XLSM]
-    G --> H[SpreadsheetImporter le planilha]
-    H --> I[CampaignImportService normaliza dados]
-    I --> J[Busca correspondencias no catalogo]
-    J --> K[Aplica regras de pesaveis e fardo/caixa]
-    K --> L[Gera bloqueios e pendencias]
-    L --> M[AppRepository grava campaign_items]
+    G --> K[Importar arquivo CSV/XLSX/XLSM]
+    K --> L[Validar token antiforgery e limite do upload]
+    L --> M[SpreadsheetImporter le planilha]
+    M --> N[CampaignImportService normaliza dados]
+    N --> O[Busca correspondencias no catalogo]
+    O --> P[Aplica regras de pesaveis e fardo caixa]
+    P --> Q[Gera bloqueios e pendencias]
+    Q --> R[AppRepository grava campaign_items]
 
-    M --> N[Usuario revisa itens pendentes]
-    N --> O[ReviewService aprova ou rejeita]
-    O --> P[Atualiza status do item]
+    R --> S[Usuario revisa itens pendentes]
+    S --> T[ReviewService aprova ou rejeita]
+    T --> U[Atualiza status do item]
 
-    P --> Q{Ainda existe bloqueio?}
-    Q -- Sim --> N
-    Q -- Nao --> R[Exportar CSV]
-    R --> S[ExportService monta arquivo]
-    S --> T[Salvar exportacao e liberar download]
+    U --> V{Ainda existe bloqueio?}
+    V -- Sim --> S
+    V -- Nao --> W[Exportar CSV]
+    W --> X[ExportService monta arquivo]
+    X --> Y[Salvar exportacao e liberar download]
 ```
 
 ## Estrutura por responsabilidade
@@ -48,37 +54,38 @@ flowchart TD
 
 - [Program.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Program.cs>)
   - Registra servicos.
-  - Configura autenticacao por cookie.
-  - Define rotas como `/login`, `/campaigns`, `/catalog`, `/rules`, `/history`.
+  - Configura autenticacao por cookie e antiforgery.
+  - Define rotas como `/setup`, `/login`, `/campaigns`, `/catalog`, `/rules`, `/history`.
   - Chama `CampaignImportService`, `ReviewService` e `ExportService`.
+  - Se o erro estiver no fluxo da tela, redirecionamento ou permissao, comece aqui.
 
 - [HtmlView.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Ui/HtmlView.cs>)
   - Monta o HTML das paginas.
-  - Centraliza layout, badges e estilo visual.
-  - Se um erro for “a tela ficou estranha” ou “nao aparece o badge certo”, olhe aqui.
+  - Centraliza layout, badges e formularios.
+  - Se a tela nao renderiza certo ou uma acao da barra superior sumiu, olhe aqui.
 
 ### Regra de negocio
 
 - [SpreadsheetImporter.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Services/SpreadsheetImporter.cs>)
-  - Le `CSV`, `XLSX` e `XLSM`.
-  - Procura as abas e os cabecalhos esperados.
-  - Converte a planilha em linhas brutas para o sistema.
-  - Se o erro for “arquivo nao importa”, “aba nao encontrada” ou “coluna obrigatoria ausente”, comece aqui.
+  - Le `CSV`, `TXT`, `XLSX` e `XLSM`.
+  - Valida nome, tamanho, assinatura ZIP e conteudo de texto.
+  - Procura abas e cabecalhos esperados.
+  - Se o erro for "arquivo nao importa", "aba nao encontrada" ou "coluna obrigatoria ausente", comece aqui.
 
 - [Parsing.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Services/Parsing.cs>)
   - Converte preco, quantidade, unidade e tipo de codigo.
   - Se um valor monetario, `Kg`, `Fardos` ou `EAN` vier errado, olhe aqui.
 
 - [TextNormalizer.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Services/TextNormalizer.cs>)
-  - Remove acento, padroniza maiusculas e escapa CSV.
-  - Se o cruzamento de descricao com o catalogo falhar por diferenca textual, este arquivo entra na investigacao.
+  - Remove acento e padroniza chaves de busca.
+  - Se o cruzamento com o catalogo falhar por diferenca textual, este arquivo entra na investigacao.
 
 - [CampaignImportService.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Services/CampaignImportService.cs>)
   - Orquestra a importacao da campanha.
   - Busca itens no catalogo.
-  - Aplica regras de pesavel e fardo/caixa.
+  - Aplica regras de pesavel e fardo caixa.
   - Gera bloqueios como `Produto sem catalogo/codigo`, `Conversao de pesavel pendente`, `Fardo/caixa pendente`.
-  - Se o erro for “o item entrou bloqueado errado” ou “a regra de conversao nao bateu”, este e o primeiro arquivo.
+  - Se o erro for "o item entrou bloqueado errado" ou "a regra de conversao nao bateu", este e o primeiro arquivo.
 
 - [ReviewService.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Services/ReviewService.cs>)
   - Aprova ou rejeita revisao manual.
@@ -89,24 +96,25 @@ flowchart TD
   - Verifica se ainda existe bloqueio.
   - Gera o CSV final.
   - Salva o historico da exportacao.
-  - Se o erro for “nao exporta” ou “o CSV saiu errado”, comece aqui.
+  - Se o erro for "nao exporta" ou "o CSV saiu errado", comece aqui.
 
 ### Persistencia e banco
 
 - [AppDb.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/AppDb.cs>)
   - Abre conexao com PostgreSQL.
-  - Se houver erro de string de conexao ou indisponibilidade do banco, este e o ponto base.
+  - Completa a senha usando `ConnectionStrings:PostgreSqlPassword`, `POSTGRESQL_PASSWORD` ou `POSTGRES_PASSWORD`.
+  - Se houver erro de conexao ou de configuracao de senha, este e o ponto base.
 
 - [SchemaInitializer.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/SchemaInitializer.cs>)
   - Cria tabelas na inicializacao.
-  - Cria usuarios padrao.
+  - Cria usuarios bootstrap somente quando a configuracao existir.
   - Cria regras padrao.
-  - Se o sistema sobe mas “faltam tabelas” ou “nao existe login inicial”, olhe aqui.
+  - Se o sistema sobe mas faltam tabelas, regras ou seed inicial, olhe aqui.
 
 - [AppRepository.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/AppRepository.cs>)
   - Faz todo o SQL de leitura e escrita.
   - Campaigns, catalogo, regras, itens, revisoes, exportacoes e auditoria passam por aqui.
-  - Se o erro for “gravou errado no banco”, “consulta nao trouxe item” ou “nao salvou exportacao”, este e o arquivo principal.
+  - Se o erro for "gravou errado no banco", "consulta nao trouxe item" ou "nao salvou exportacao", este e o arquivo principal.
 
 - [PasswordHasher.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/PasswordHasher.cs>)
   - Gera e valida hash de senha.
@@ -122,35 +130,40 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    A[Login] --> B[Campanhas]
-    B --> C[Detalhe da campanha]
-    C --> D[Importacao de itens]
-    C --> E[Revisao de pendencias]
-    C --> F[Exportacao CSV]
-    B --> G[Catalogo]
-    B --> H[Regras]
-    B --> I[Historico]
+    A[Setup inicial] --> B[Login]
+    B --> C[Campanhas]
+    C --> D[Detalhe da campanha]
+    D --> E[Importacao de itens]
+    D --> F[Revisao de pendencias]
+    D --> G[Exportacao CSV]
+    C --> H[Catalogo]
+    C --> I[Regras]
+    C --> J[Historico]
 ```
 
 ## Fluxo de importacao
 
 ```mermaid
 flowchart TD
-    A[Arquivo enviado] --> B[SpreadsheetImporter]
-    B --> C{Formato suportado?}
-    C -- Nao --> X[Erro de importacao]
-    C -- Sim --> D[Le linhas da aba]
-    D --> E[Valida cabecalho]
-    E --> F[CampaignImportService]
-    F --> G[Normaliza descricao]
-    G --> H[Busca no catalogo]
-    H --> I{Encontrou codigo?}
-    I -- Nao --> J[Marca SEM_CATALOGO]
-    I -- Sim --> K[Cria 1 ou mais linhas por codigo]
-    K --> L[Aplica regras]
-    J --> L
-    L --> M[Define bloqueios]
-    M --> N[AppRepository salva campaign_items]
+    A[Arquivo enviado] --> B[Program.cs valida antiforgery]
+    B --> C{Arquivo acima de 10 MB?}
+    C -- Sim --> X[Retorna aviso de limite]
+    C -- Nao --> D[SpreadsheetImporter]
+    D --> E{Formato suportado?}
+    E -- Nao --> Y[Erro de importacao]
+    E -- Sim --> F[Valida assinatura ou texto]
+    F --> G[Le linhas da aba]
+    G --> H[Valida cabecalho]
+    H --> I[CampaignImportService]
+    I --> J[Normaliza descricao]
+    J --> K[Busca no catalogo]
+    K --> L{Encontrou codigo?}
+    L -- Nao --> M[Marca SEM_CATALOGO]
+    L -- Sim --> N[Cria 1 ou mais linhas por codigo]
+    N --> O[Aplica regras]
+    M --> O
+    O --> P[Define bloqueios]
+    P --> Q[AppRepository salva campaign_items]
 ```
 
 ## Fluxo de revisao e exportacao
@@ -202,14 +215,14 @@ erDiagram
 
 ## Onde mexer quando algo der erro
 
-### 1. Erro de login
+### 1. Erro de setup ou login
 
 Olhar nesta ordem:
 
-- [Program.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Program.cs>): rota `/login`.
-- [AppRepository.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/AppRepository.cs>): `GetUserByEmailAsync`.
+- [Program.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Program.cs>): rotas `/setup`, `/login` e `/logout`
+- [AppRepository.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/AppRepository.cs>): `GetUserByEmailAsync`, `CreateUserAsync`, `HasUsersAsync`
 - [PasswordHasher.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/PasswordHasher.cs>)
-- [SchemaInitializer.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/SchemaInitializer.cs>): seed dos usuarios.
+- [SchemaInitializer.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/SchemaInitializer.cs>): seed bootstrap
 
 ### 2. Banco nao conecta ou sistema nao sobe
 
@@ -220,61 +233,77 @@ Olhar nesta ordem:
 - [SchemaInitializer.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/SchemaInitializer.cs>)
 - `app-run.out.log` e `app-run.err.log` na raiz do projeto
 
-### 3. Arquivo nao importa
+### 3. Erro de token ou formulario expirado
+
+Olhar nesta ordem:
+
+- [Program.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Program.cs>): `AddAntiforgery`, `UseAntiforgery`, `AntiForgeryField`
+- [HtmlView.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Ui/HtmlView.cs>): formularios da navegacao e layout
+
+Sinais comuns:
+
+- pagina aberta ha muito tempo antes do envio;
+- usuario fez login em outra aba;
+- formulario foi reaproveitado sem recarregar a pagina.
+
+### 4. Arquivo nao importa
 
 Olhar nesta ordem:
 
 - [SpreadsheetImporter.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Services/SpreadsheetImporter.cs>)
 - [Parsing.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Services/Parsing.cs>)
-- [Program.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Program.cs>): rota `/campaigns/{id}/import` ou `/catalog/import`
+- [Program.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Program.cs>): rotas `/campaigns/{id}/import` e `/catalog/import`
 
 Sinais comuns:
 
-- “Aba nao encontrada”: nome esperado no importador nao bate com a planilha.
-- “Coluna obrigatoria ausente”: cabecalho veio diferente.
-- “Preco invalido”: parser nao conseguiu entender o valor.
+- "Arquivo acima do limite": upload maior que `10 MB`.
+- "Arquivo invalido": assinatura ZIP ou texto nao bate com o formato.
+- "Aba nao encontrada": nome esperado no importador nao bate com a planilha.
+- "Coluna obrigatoria ausente": cabecalho veio diferente.
+- "Preco invalido": parser nao conseguiu entender o valor.
 
-### 4. Item nao cruzou com o catalogo
+### 5. Item nao cruzou com o catalogo
 
 Olhar nesta ordem:
 
 - [TextNormalizer.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Services/TextNormalizer.cs>)
 - [CampaignImportService.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Services/CampaignImportService.cs>)
 - [AppRepository.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/AppRepository.cs>): `FindCatalogMatchesAsync`
-- Tabela `product_catalog_entries`
+- tabela `product_catalog_entries`
 
-### 5. Conversao de preco saiu errada
+### 6. Conversao de preco saiu errada
 
 Olhar nesta ordem:
 
 - [CampaignImportService.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Services/CampaignImportService.cs>)
 - [Parsing.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Services/Parsing.cs>)
 - [SchemaInitializer.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/SchemaInitializer.cs>): regras padrao
-- Tela `/rules`
+- tela `/rules`
 
 Casos tipicos:
 
 - pesavel multiplicou quando nao devia;
 - item `Kg` nao deveria virar `x10`;
-- fardo/caixa deveria ir para revisao e nao foi.
+- fardo ou caixa deveria ir para revisao e nao foi.
 
-### 6. Item fica pendente para sempre
+### 7. Item fica pendente para sempre
 
 Olhar nesta ordem:
 
 - [ReviewService.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Services/ReviewService.cs>)
 - [AppRepository.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/AppRepository.cs>): `UpdateItemReviewAsync`
-- Tabela `campaign_items`, campo `blocking_reasons`
+- tabela `campaign_items`, campo `blocking_reasons`
 
-### 7. Exportacao nao libera
+### 8. Exportacao nao libera
 
 Olhar nesta ordem:
 
 - [ExportService.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Services/ExportService.cs>)
+- [Program.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Program.cs>): rota `POST /campaigns/{id}/export`
 - [AppRepository.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/AppRepository.cs>): leitura dos itens
-- Tabela `campaign_items`: conferir `blocking_reasons`
+- tabela `campaign_items`: conferir `blocking_reasons`
 
-### 8. CSV final saiu com formato errado
+### 9. CSV final saiu com formato errado
 
 Olhar nesta ordem:
 
@@ -299,6 +328,10 @@ Quando precisar alterar o sistema, a ordem mais segura costuma ser:
   - valida parser monetario;
   - valida parser de quantidade;
   - valida normalizacao de texto;
-  - valida leitura real da planilha `.xlsm`.
+  - valida leitura real da planilha `.xlsm`;
+  - valida conversao de pesaveis;
+  - valida deteccao de fardo e caixa;
+  - valida duplicidade por codigo;
+  - valida rejeicao de uploads invalidos.
 
 Se surgir bug novo de regra de negocio, o melhor caminho e acrescentar teste aqui antes de corrigir a implementacao.

@@ -4,8 +4,8 @@ services:
     container_name: clube-ofertas-postgres
     environment:
       POSTGRES_DB: clube_das_ofertas
-      POSTGRES_USER: clube
-      POSTGRES_PASSWORD: clube123
+      POSTGRES_USER: ${POSTGRES_USER:-clube}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD no ambiente ou em um arquivo .env local}
     ports:
       - "5432:5432"
     volumes:

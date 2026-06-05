@@ -7,24 +7,24 @@ namespace ClubeDasOfertas.Web.Ui;
 
 public static class HtmlView
 {
-    public static IResult Page(string title, ClaimsPrincipal user, string body, string notice = "", int statusCode = StatusCodes.Status200OK)
+    public static IResult Page(string title, ClaimsPrincipal user, string body, string notice = "", string antiForgeryField = "", int statusCode = StatusCodes.Status200OK)
     {
-        return Results.Content(Layout(title, user, body, notice), "text/html; charset=utf-8", statusCode: statusCode);
+        return Results.Content(Layout(title, user, body, notice, antiForgeryField), "text/html; charset=utf-8", statusCode: statusCode);
     }
 
-    public static string Layout(string title, ClaimsPrincipal user, string body, string notice = "")
+    public static string Layout(string title, ClaimsPrincipal user, string body, string notice = "", string antiForgeryField = "")
     {
         var signedIn = user.Identity?.IsAuthenticated == true;
         var displayName = signedIn ? user.FindFirstValue(ClaimTypes.Name) ?? user.Identity?.Name ?? "" : "";
         var role = signedIn ? user.FindFirstValue(ClaimTypes.Role) ?? "" : "";
         var nav = signedIn
-            ? $"""
+            ? $$"""
               <nav class="nav">
                 <a href="/campaigns">Campanhas</a>
                 <a href="/catalog">Catalogo</a>
                 <a href="/rules">Regras</a>
                 <a href="/history">Historico</a>
-                <form method="post" action="/logout"><button class="ghost" type="submit">Sair</button></form>
+                <form method="post" action="/logout">{{antiForgeryField}}<button class="ghost" type="submit">Sair</button></form>
               </nav>
               <div class="userbox">{E(displayName)} <span>{E(role)}</span></div>
               """

@@ -2,6 +2,7 @@ using ClubeDasOfertas.Web.Domain;
 using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace ClubeDasOfertas.Web.Services;
@@ -10,6 +11,8 @@ public sealed class ImportException(string message) : Exception(message);
 
 public sealed partial class SpreadsheetImporter
 {
+    internal const long MaxUploadBytes = 10 * 1024 * 1024;
+
     public async Task<IReadOnlyList<RawCampaignRow>> ReadCampaignRowsAsync(IFormFile file, CancellationToken cancellationToken = default)
     {
         var rows = await ReadRowsAsync(file, "Base Clube - CLT", cancellationToken);
@@ -89,9 +92,19 @@ public sealed partial class SpreadsheetImporter
 
     private static async Task<IReadOnlyList<IReadOnlyList<string>>> ReadRowsAsync(IFormFile file, string preferredSheet, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(file.FileName))
+        {
+            throw new ImportException("Arquivo sem nome.");
+        }
+
         if (file.Length == 0)
         {
             throw new ImportException("Arquivo vazio.");
+        }
+
+        if (file.Length > MaxUploadBytes)
+        {
+            throw new ImportException("Arquivo excede o limite de 10 MB.");
         }
 
         await using var stream = file.OpenReadStream();
@@ -102,11 +115,15 @@ public sealed partial class SpreadsheetImporter
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (extension is ".xlsx" or ".xlsm")
         {
+            EnsureZipSignature(memory);
+            memory.Position = 0;
             return ReadOpenXmlWorkbook(memory, preferredSheet);
         }
 
         if (extension is ".csv" or ".txt")
         {
+            EnsureTextPayload(memory);
+            memory.Position = 0;
             return ReadCsv(memory);
         }
 
@@ -183,47 +200,58 @@ public sealed partial class SpreadsheetImporter
 
     private static IReadOnlyList<IReadOnlyList<string>> ReadOpenXmlWorkbook(Stream stream, string preferredSheet)
     {
-        using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
-        var sharedStrings = ReadSharedStrings(archive);
-        var sheetPath = ResolveSheetPath(archive, preferredSheet);
-        var sheetEntry = archive.GetEntry(sheetPath) ?? throw new ImportException($"A aba '{preferredSheet}' nao foi encontrada no arquivo.");
-
-        using var sheetStream = sheetEntry.Open();
-        var sheet = XDocument.Load(sheetStream);
-        var rows = new List<IReadOnlyList<string>>();
-
-        foreach (var rowElement in sheet.Descendants().Where(x => x.Name.LocalName == "row"))
+        try
         {
-            var cells = new Dictionary<int, string>();
-            foreach (var cellElement in rowElement.Elements().Where(x => x.Name.LocalName == "c"))
+            using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+            var sharedStrings = ReadSharedStrings(archive);
+            var sheetPath = ResolveSheetPath(archive, preferredSheet);
+            var sheetEntry = archive.GetEntry(sheetPath) ?? throw new ImportException($"A aba '{preferredSheet}' nao foi encontrada no arquivo.");
+
+            using var sheetStream = sheetEntry.Open();
+            var sheet = LoadXml(sheetStream);
+            var rows = new List<IReadOnlyList<string>>();
+
+            foreach (var rowElement in sheet.Descendants().Where(x => x.Name.LocalName == "row"))
             {
-                var reference = (string?)cellElement.Attribute("r") ?? "";
-                var column = ColumnIndex(reference);
-                if (column <= 0)
+                var cells = new Dictionary<int, string>();
+                foreach (var cellElement in rowElement.Elements().Where(x => x.Name.LocalName == "c"))
                 {
+                    var reference = (string?)cellElement.Attribute("r") ?? "";
+                    var column = ColumnIndex(reference);
+                    if (column <= 0)
+                    {
+                        continue;
+                    }
+
+                    cells[column] = ReadCellValue(cellElement, sharedStrings);
+                }
+
+                if (cells.Count == 0)
+                {
+                    rows.Add(Array.Empty<string>());
                     continue;
                 }
 
-                cells[column] = ReadCellValue(cellElement, sharedStrings);
+                var max = cells.Keys.Max();
+                var values = new string[max];
+                for (var i = 1; i <= max; i++)
+                {
+                    values[i - 1] = cells.TryGetValue(i, out var value) ? value : "";
+                }
+
+                rows.Add(values);
             }
 
-            if (cells.Count == 0)
-            {
-                rows.Add(Array.Empty<string>());
-                continue;
-            }
-
-            var max = cells.Keys.Max();
-            var values = new string[max];
-            for (var i = 1; i <= max; i++)
-            {
-                values[i - 1] = cells.TryGetValue(i, out var value) ? value : "";
-            }
-
-            rows.Add(values);
+            return rows;
         }
-
-        return rows;
+        catch (InvalidDataException)
+        {
+            throw new ImportException("O arquivo XLSX/XLSM parece corrompido ou fora do formato esperado.");
+        }
+        catch (XmlException)
+        {
+            throw new ImportException("O conteudo XML do arquivo esta invalido ou corrompido.");
+        }
     }
 
     private static IReadOnlyList<string> ReadSharedStrings(ZipArchive archive)
@@ -235,7 +263,7 @@ public sealed partial class SpreadsheetImporter
         }
 
         using var stream = entry.Open();
-        var document = XDocument.Load(stream);
+        var document = LoadXml(stream);
         return document.Descendants()
             .Where(x => x.Name.LocalName == "si")
             .Select(si => string.Concat(si.Descendants().Where(x => x.Name.LocalName == "t").Select(x => x.Value)))
@@ -249,8 +277,8 @@ public sealed partial class SpreadsheetImporter
 
         using var workbookStream = workbookEntry.Open();
         using var relsStream = relationshipsEntry.Open();
-        var workbook = XDocument.Load(workbookStream);
-        var rels = XDocument.Load(relsStream);
+        var workbook = LoadXml(workbookStream);
+        var rels = LoadXml(relsStream);
         var preferred = TextNormalizer.NormalizeKey(preferredSheet);
 
         var sheets = workbook.Descendants()
@@ -357,6 +385,44 @@ public sealed partial class SpreadsheetImporter
     private static string Cell(IReadOnlyList<string> row, int index)
     {
         return index >= 0 && index < row.Count ? row[index].Trim() : "";
+    }
+
+    private static void EnsureZipSignature(Stream stream)
+    {
+        var header = new byte[4];
+        _ = stream.Read(header, 0, header.Length);
+        var isZip =
+            header.SequenceEqual(new byte[] { 0x50, 0x4B, 0x03, 0x04 }) ||
+            header.SequenceEqual(new byte[] { 0x50, 0x4B, 0x05, 0x06 }) ||
+            header.SequenceEqual(new byte[] { 0x50, 0x4B, 0x07, 0x08 });
+
+        if (!isZip)
+        {
+            throw new ImportException("O arquivo informado nao possui assinatura valida de XLSX/XLSM.");
+        }
+    }
+
+    private static void EnsureTextPayload(Stream stream)
+    {
+        var max = (int)Math.Min(stream.Length, 512);
+        var buffer = new byte[max];
+        _ = stream.Read(buffer, 0, buffer.Length);
+        if (buffer.Any(b => b == 0))
+        {
+            throw new ImportException("O arquivo CSV/TXT parece binario ou corrompido.");
+        }
+    }
+
+    private static XDocument LoadXml(Stream stream)
+    {
+        var settings = new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null
+        };
+
+        using var reader = XmlReader.Create(stream, settings);
+        return XDocument.Load(reader);
     }
 
     [GeneratedRegex(@"^[A-Za-z]+")]

@@ -2,9 +2,11 @@ using ClubeDasOfertas.Web.Data;
 using ClubeDasOfertas.Web.Domain;
 using ClubeDasOfertas.Web.Services;
 using ClubeDasOfertas.Web.Ui;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
 using System.Globalization;
 using System.Security.Claims;
 using System.Text;
@@ -29,6 +31,18 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("AdminOnly", policy => policy.RequireRole(Roles.Admin));
 });
 
+builder.Services.AddAntiforgery(options =>
+{
+    options.FormFieldName = "__RequestVerificationToken";
+    options.Cookie.Name = "clube_ofertas_antiforgery";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+});
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = SpreadsheetImporter.MaxUploadBytes;
+});
+
 builder.Services.AddSingleton<AppDb>();
 builder.Services.AddScoped<AppRepository>();
 builder.Services.AddScoped<SchemaInitializer>();
@@ -46,20 +60,155 @@ using (var scope = app.Services.CreateScope())
 
 app.UseAuthentication();
 app.UseAuthorization();
-
-app.MapGet("/", () => Results.Redirect("/campaigns"));
-
-app.MapGet("/login", (HttpContext context) =>
+app.UseAntiforgery();
+app.Use(async (context, next) =>
 {
+    try
+    {
+        await next();
+    }
+    catch (AntiforgeryValidationException)
+    {
+        if (context.Response.HasStarted)
+        {
+            throw;
+        }
+
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        context.Response.ContentType = "text/html; charset=utf-8";
+
+        var antiForgeryField = context.User.Identity?.IsAuthenticated == true
+            ? AntiForgeryField(context.RequestServices.GetRequiredService<IAntiforgery>(), context)
+            : "";
+        var body = """
+<section class="panel">
+  <h1>Formulario expirado</h1>
+  <p>O envio nao foi aceito porque o token de seguranca expirou ou ficou invalido.</p>
+  <p>Recarregue a pagina, confirme o login se necessario e envie novamente.</p>
+</section>
+""";
+
+        var page = HtmlView.Layout("Formulario expirado", context.User, body, antiForgeryField: antiForgeryField);
+        await context.Response.WriteAsync(page);
+    }
+});
+
+app.MapGet("/", async (AppRepository repository, CancellationToken cancellationToken) =>
+{
+    return await repository.HasUsersAsync(cancellationToken)
+        ? Results.Redirect("/campaigns")
+        : Results.Redirect("/setup");
+});
+
+app.MapGet("/setup", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
+{
+    if (await repository.HasUsersAsync(cancellationToken))
+    {
+        return context.User.Identity?.IsAuthenticated == true
+            ? Results.Redirect("/campaigns")
+            : Results.Redirect("/login");
+    }
+
+    var antiForgeryField = AntiForgeryField(antiforgery, context);
+    var body = $$"""
+<section class="login">
+  <h1>Configurar acesso inicial</h1>
+  <p class="muted">Crie o primeiro administrador do sistema. Depois disso, a tela de configuracao inicial sera desativada.</p>
+  <form method="post" action="/setup">
+    {{antiForgeryField}}
+    <div class="field">
+      <label>Nome</label>
+      <input name="display_name" required autofocus>
+    </div>
+    <div class="field">
+      <label>Email</label>
+      <input name="email" type="email" autocomplete="username" required>
+    </div>
+    <div class="field">
+      <label>Senha</label>
+      <input name="password" type="password" autocomplete="new-password" required>
+    </div>
+    <div class="field">
+      <label>Confirmar senha</label>
+      <input name="confirm_password" type="password" autocomplete="new-password" required>
+    </div>
+    <button type="submit">Criar administrador</button>
+  </form>
+</section>
+""";
+
+    return HtmlView.Page("Configuracao inicial", context.User, body, Notice(context.Request));
+}).AllowAnonymous();
+
+app.MapPost("/setup", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
+{
+    await antiforgery.ValidateRequestAsync(context);
+
+    if (await repository.HasUsersAsync(cancellationToken))
+    {
+        return Results.Redirect("/login");
+    }
+
+    var form = await context.Request.ReadFormAsync(cancellationToken);
+    var displayName = form["display_name"].ToString().Trim();
+    var email = form["email"].ToString().Trim();
+    var password = form["password"].ToString();
+    var confirmPassword = form["confirm_password"].ToString();
+
+    if (string.IsNullOrWhiteSpace(displayName) || string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+    {
+        return RedirectWithNotice("/setup", "Preencha nome, email e senha.");
+    }
+
+    if (!LooksLikeEmail(email))
+    {
+        return RedirectWithNotice("/setup", "Informe um email valido.");
+    }
+
+    if (password.Length < 10)
+    {
+        return RedirectWithNotice("/setup", "A senha inicial precisa ter ao menos 10 caracteres.");
+    }
+
+    if (password != confirmPassword)
+    {
+        return RedirectWithNotice("/setup", "A confirmacao da senha nao confere.");
+    }
+
+    var account = await repository.CreateUserAsync(email, displayName, Roles.Admin, password, cancellationToken);
+    await repository.AddAuditAsync(null, account.Email, "Criou administrador inicial", "User", account.Id, "Bootstrap inicial do sistema", cancellationToken);
+
+    var claims = new List<Claim>
+    {
+        new(ClaimTypes.NameIdentifier, account.Id.ToString()),
+        new(ClaimTypes.Email, account.Email),
+        new(ClaimTypes.Name, account.DisplayName),
+        new(ClaimTypes.Role, account.Role)
+    };
+    var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+    await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+
+    return Results.Redirect("/campaigns");
+}).AllowAnonymous();
+
+app.MapGet("/login", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
+{
+    if (!await repository.HasUsersAsync(cancellationToken))
+    {
+        return Results.Redirect("/setup");
+    }
+
     if (context.User.Identity?.IsAuthenticated == true)
     {
         return Results.Redirect("/campaigns");
     }
 
-    var body = """
+    var antiForgeryField = AntiForgeryField(antiforgery, context);
+    var body = $$"""
 <section class="login">
   <h1>Entrar</h1>
   <form method="post" action="/login">
+    {{antiForgeryField}}
     <div class="field">
       <label>Email</label>
       <input name="email" type="email" autocomplete="username" required autofocus>
@@ -70,14 +219,20 @@ app.MapGet("/login", (HttpContext context) =>
     </div>
     <button type="submit">Entrar</button>
   </form>
-  <p class="muted">Usuarios iniciais: admin@clube.local / Admin@123 e operador@clube.local / Operador@123.</p>
 </section>
 """;
-    return HtmlView.Page("Login", context.User, body);
+    return HtmlView.Page("Login", context.User, body, Notice(context.Request));
 }).AllowAnonymous();
 
-app.MapPost("/login", async (HttpContext context, AppRepository repository, CancellationToken cancellationToken) =>
+app.MapPost("/login", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
+    await antiforgery.ValidateRequestAsync(context);
+
+    if (!await repository.HasUsersAsync(cancellationToken))
+    {
+        return Results.Redirect("/setup");
+    }
+
     var form = await context.Request.ReadFormAsync(cancellationToken);
     var email = form["email"].ToString();
     var password = form["password"].ToString();
@@ -85,11 +240,13 @@ app.MapPost("/login", async (HttpContext context, AppRepository repository, Canc
 
     if (account is null || !account.IsActive || !PasswordHasher.Verify(password, account.PasswordHash))
     {
-        var body = """
+        var antiForgeryField = AntiForgeryField(antiforgery, context);
+        var body = $$"""
 <section class="login">
   <h1>Entrar</h1>
   <div class="notice error">Email ou senha invalidos.</div>
   <form method="post" action="/login">
+    {{antiForgeryField}}
     <div class="field">
       <label>Email</label>
       <input name="email" type="email" autocomplete="username" required autofocus>
@@ -119,26 +276,34 @@ app.MapPost("/login", async (HttpContext context, AppRepository repository, Canc
     return Results.Redirect("/campaigns");
 }).AllowAnonymous();
 
-app.MapPost("/logout", async (HttpContext context) =>
+app.MapPost("/logout", async (HttpContext context, IAntiforgery antiforgery) =>
 {
+    await antiforgery.ValidateRequestAsync(context);
     await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     return Results.Redirect("/login");
 }).RequireAuthorization();
 
-app.MapGet("/denied", (HttpContext context) =>
-    HtmlView.Page("Acesso negado", context.User, """<h1>Acesso negado</h1><p>Seu perfil nao possui permissao para esta area.</p>""", statusCode: StatusCodes.Status403Forbidden)
+app.MapGet("/denied", (HttpContext context, IAntiforgery antiforgery) =>
+    HtmlView.Page(
+        "Acesso negado",
+        context.User,
+        """<h1>Acesso negado</h1><p>Seu perfil nao possui permissao para esta area.</p>""",
+        antiForgeryField: AntiForgeryField(antiforgery, context),
+        statusCode: StatusCodes.Status403Forbidden)
 ).RequireAuthorization();
 
-app.MapGet("/campaigns", async (HttpContext context, AppRepository repository, CancellationToken cancellationToken) =>
+app.MapGet("/campaigns", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
     var campaigns = await repository.ListCampaignsAsync(cancellationToken);
+    var antiForgeryField = AntiForgeryField(antiforgery, context);
     var body = new StringBuilder();
     body.AppendLine("<h1>Campanhas</h1>");
-    body.AppendLine("""
+    body.AppendLine($$"""
 <div class="grid two">
   <section class="panel">
     <h2>Nova campanha</h2>
     <form method="post" action="/campaigns">
+      {{antiForgeryField}}
       <div class="field"><label>Nome</label><input name="name" required placeholder="Tabloide semana 05 a 08"></div>
       <div class="field"><label>Vigencia inicio</label><input name="valid_from" type="date" required></div>
       <div class="field"><label>Vigencia fim</label><input name="valid_to" type="date" required></div>
@@ -180,11 +345,12 @@ app.MapGet("/campaigns", async (HttpContext context, AppRepository repository, C
 </div>
 """);
 
-    return HtmlView.Page("Campanhas", context.User, body.ToString(), Notice(context.Request));
+    return HtmlView.Page("Campanhas", context.User, body.ToString(), Notice(context.Request), antiForgeryField);
 }).RequireAuthorization();
 
-app.MapPost("/campaigns", async (HttpContext context, AppRepository repository, CancellationToken cancellationToken) =>
+app.MapPost("/campaigns", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
+    await antiforgery.ValidateRequestAsync(context);
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
     var form = await context.Request.ReadFormAsync(cancellationToken);
     var name = form["name"].ToString();
@@ -204,23 +370,25 @@ app.MapPost("/campaigns", async (HttpContext context, AppRepository repository, 
     return Results.Redirect($"/campaigns/{campaign.Id}");
 }).RequireAuthorization();
 
-app.MapGet("/campaigns/{id:guid}", async (Guid id, string? filter, HttpContext context, AppRepository repository, CancellationToken cancellationToken) =>
+app.MapGet("/campaigns/{id:guid}", async (Guid id, string? filter, HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
+    var antiForgeryField = AntiForgeryField(antiforgery, context);
     var campaign = await repository.GetCampaignAsync(id, cancellationToken);
     if (campaign is null)
     {
-        return HtmlView.Page("Campanha nao encontrada", context.User, "<h1>Campanha nao encontrada</h1>", statusCode: StatusCodes.Status404NotFound);
+        return HtmlView.Page("Campanha nao encontrada", context.User, "<h1>Campanha nao encontrada</h1>", antiForgeryField: antiForgeryField, statusCode: StatusCodes.Status404NotFound);
     }
 
     var stats = await repository.GetCampaignStatsAsync(id, cancellationToken);
     var items = await repository.GetCampaignItemsAsync(id, cancellationToken);
     var visibleItems = ApplyFilter(items, filter).ToList();
-    var body = RenderCampaignDetails(campaign, stats, visibleItems, filter ?? "todos");
-    return HtmlView.Page(campaign.Name, context.User, body, Notice(context.Request));
+    var body = RenderCampaignDetails(campaign, stats, visibleItems, filter ?? "todos", antiForgeryField);
+    return HtmlView.Page(campaign.Name, context.User, body, Notice(context.Request), antiForgeryField);
 }).RequireAuthorization();
 
-app.MapPost("/campaigns/{id:guid}/import", async (Guid id, HttpContext context, AppRepository repository, CampaignImportService importService, CancellationToken cancellationToken) =>
+app.MapPost("/campaigns/{id:guid}/import", async (Guid id, HttpContext context, AppRepository repository, CampaignImportService importService, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
+    await antiforgery.ValidateRequestAsync(context);
     var campaign = await repository.GetCampaignAsync(id, cancellationToken);
     if (campaign is null)
     {
@@ -228,7 +396,16 @@ app.MapPost("/campaigns/{id:guid}/import", async (Guid id, HttpContext context, 
     }
 
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
-    var form = await context.Request.ReadFormAsync(cancellationToken);
+    IFormCollection form;
+    try
+    {
+        form = await context.Request.ReadFormAsync(cancellationToken);
+    }
+    catch (InvalidDataException)
+    {
+        return RedirectWithNotice($"/campaigns/{id}", $"Arquivo acima do limite de {SpreadsheetImporter.MaxUploadBytes / (1024 * 1024)} MB.");
+    }
+
     var file = form.Files.GetFile("file");
     if (file is null)
     {
@@ -246,24 +423,27 @@ app.MapPost("/campaigns/{id:guid}/import", async (Guid id, HttpContext context, 
     }
 }).RequireAuthorization();
 
-app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/approve", async (Guid campaignId, Guid itemId, HttpContext context, AppRepository repository, ReviewService reviewService, CancellationToken cancellationToken) =>
+app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/approve", async (Guid campaignId, Guid itemId, HttpContext context, AppRepository repository, ReviewService reviewService, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
+    await antiforgery.ValidateRequestAsync(context);
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
     var form = await context.Request.ReadFormAsync(cancellationToken);
     await reviewService.ApproveAsync(itemId, currentUser, form["comment"].ToString(), cancellationToken);
     return RedirectWithNotice($"/campaigns/{campaignId}", "Item aprovado.");
 }).RequireAuthorization();
 
-app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/reject", async (Guid campaignId, Guid itemId, HttpContext context, AppRepository repository, ReviewService reviewService, CancellationToken cancellationToken) =>
+app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/reject", async (Guid campaignId, Guid itemId, HttpContext context, AppRepository repository, ReviewService reviewService, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
+    await antiforgery.ValidateRequestAsync(context);
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
     var form = await context.Request.ReadFormAsync(cancellationToken);
     await reviewService.RejectAsync(itemId, currentUser, form["comment"].ToString(), cancellationToken);
     return RedirectWithNotice($"/campaigns/{campaignId}", "Item rejeitado e mantido bloqueado.");
 }).RequireAuthorization();
 
-app.MapGet("/campaigns/{id:guid}/export", async (Guid id, HttpContext context, AppRepository repository, ExportService exportService, CancellationToken cancellationToken) =>
+app.MapPost("/campaigns/{id:guid}/export", async (Guid id, HttpContext context, AppRepository repository, ExportService exportService, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
+    await antiforgery.ValidateRequestAsync(context);
     var campaign = await repository.GetCampaignAsync(id, cancellationToken);
     if (campaign is null)
     {
@@ -294,17 +474,28 @@ app.MapGet("/exports/{id:guid}/download", async (Guid id, AppRepository reposito
     return Results.File(bytes, "text/csv; charset=utf-8", export.FileName);
 }).RequireAuthorization();
 
-app.MapGet("/catalog", async (string? q, HttpContext context, AppRepository repository, CancellationToken cancellationToken) =>
+app.MapGet("/catalog", async (string? q, HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
     var entries = await repository.SearchCatalogAsync(q ?? "", cancellationToken);
-    var body = RenderCatalog(entries, q ?? "");
-    return HtmlView.Page("Catalogo", context.User, body, Notice(context.Request));
+    var antiForgeryField = AntiForgeryField(antiforgery, context);
+    var body = RenderCatalog(entries, q ?? "", antiForgeryField);
+    return HtmlView.Page("Catalogo", context.User, body, Notice(context.Request), antiForgeryField);
 }).RequireAuthorization("AdminOnly");
 
-app.MapPost("/catalog/import", async (HttpContext context, AppRepository repository, SpreadsheetImporter importer, CancellationToken cancellationToken) =>
+app.MapPost("/catalog/import", async (HttpContext context, AppRepository repository, SpreadsheetImporter importer, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
+    await antiforgery.ValidateRequestAsync(context);
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
-    var form = await context.Request.ReadFormAsync(cancellationToken);
+    IFormCollection form;
+    try
+    {
+        form = await context.Request.ReadFormAsync(cancellationToken);
+    }
+    catch (InvalidDataException)
+    {
+        return RedirectWithNotice("/catalog", $"Arquivo acima do limite de {SpreadsheetImporter.MaxUploadBytes / (1024 * 1024)} MB.");
+    }
+
     var file = form.Files.GetFile("file");
     if (file is null)
     {
@@ -324,14 +515,16 @@ app.MapPost("/catalog/import", async (HttpContext context, AppRepository reposit
     }
 }).RequireAuthorization("AdminOnly");
 
-app.MapGet("/rules", async (HttpContext context, AppRepository repository, CancellationToken cancellationToken) =>
+app.MapGet("/rules", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
     var rules = await repository.ListRulesAsync(cancellationToken);
-    return HtmlView.Page("Regras", context.User, RenderRules(rules), Notice(context.Request));
+    var antiForgeryField = AntiForgeryField(antiforgery, context);
+    return HtmlView.Page("Regras", context.User, RenderRules(rules, antiForgeryField), Notice(context.Request), antiForgeryField);
 }).RequireAuthorization("AdminOnly");
 
-app.MapPost("/rules", async (HttpContext context, AppRepository repository, CancellationToken cancellationToken) =>
+app.MapPost("/rules", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
+    await antiforgery.ValidateRequestAsync(context);
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
     var form = await context.Request.ReadFormAsync(cancellationToken);
     var name = form["name"].ToString();
@@ -358,27 +551,33 @@ app.MapPost("/rules", async (HttpContext context, AppRepository repository, Canc
     return RedirectWithNotice("/rules", "Regra criada.");
 }).RequireAuthorization("AdminOnly");
 
-app.MapPost("/rules/{id:guid}/toggle", async (Guid id, HttpContext context, AppRepository repository, CancellationToken cancellationToken) =>
+app.MapPost("/rules/{id:guid}/toggle", async (Guid id, HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
+    await antiforgery.ValidateRequestAsync(context);
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
     await repository.ToggleRuleAsync(id, cancellationToken);
     await repository.AddAuditAsync(currentUser.Id, currentUser.Email, "Alternou regra", "ConversionRule", id, "Ativar/desativar", cancellationToken);
     return RedirectWithNotice("/rules", "Status da regra atualizado.");
 }).RequireAuthorization("AdminOnly");
 
-app.MapGet("/history", async (HttpContext context, AppRepository repository, CancellationToken cancellationToken) =>
+app.MapGet("/history", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
     var exports = await repository.ListExportsAsync(cancellationToken);
     var logs = await repository.ListAuditLogsAsync(cancellationToken);
-    return HtmlView.Page("Historico", context.User, RenderHistory(exports, logs));
+    return HtmlView.Page("Historico", context.User, RenderHistory(exports, logs), antiForgeryField: AntiForgeryField(antiforgery, context));
 }).RequireAuthorization();
 
 app.Run();
 
-static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IReadOnlyList<CampaignItem> items, string filter)
+static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IReadOnlyList<CampaignItem> items, string filter, string antiForgeryField)
 {
     var exportButton = stats.TotalItems > 0
-        ? $"""<a class="button" href="/campaigns/{campaign.Id}/export">Exportar CSV</a>"""
+        ? $"""
+<form method="post" action="/campaigns/{campaign.Id}/export">
+  {antiForgeryField}
+  <button type="submit">Exportar CSV</button>
+</form>
+"""
         : """<span class="button secondary">Sem itens para exportar</span>""";
 
     var body = new StringBuilder();
@@ -395,10 +594,11 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
 <section class="panel">
   <h2>Importar itens</h2>
   <form method="post" action="/campaigns/{campaign.Id}/import" enctype="multipart/form-data">
+    {antiForgeryField}
     <div class="field"><label>Arquivo CSV, XLSX ou XLSM com layout fixo</label><input type="file" name="file" accept=".csv,.txt,.xlsx,.xlsm" required></div>
     <button type="submit">Importar e validar</button>
-    {exportButton}
   </form>
+  <div class="toolbar">{exportButton}</div>
 </section>
 <div class="toolbar">
   <a class="button secondary" href="/campaigns/{campaign.Id}">Todos</a>
@@ -428,10 +628,12 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
             ? $"""
 <div class="actions">
   <form method="post" action="/campaigns/{campaign.Id}/items/{item.Id}/approve">
+    {antiForgeryField}
     <input name="comment" placeholder="Obs." aria-label="Observacao">
     <button type="submit">Aprovar</button>
   </form>
   <form method="post" action="/campaigns/{campaign.Id}/items/{item.Id}/reject">
+    {antiForgeryField}
     <input name="comment" placeholder="Motivo" aria-label="Motivo">
     <button class="danger" type="submit">Rejeitar</button>
   </form>
@@ -465,15 +667,16 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
     return body.ToString();
 }
 
-static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, string query)
+static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, string query, string antiForgeryField)
 {
     var body = new StringBuilder();
-    body.AppendLine("""
+    body.AppendLine($$"""
 <h1>Catalogo de produtos</h1>
 <div class="grid two">
   <section class="panel">
     <h2>Importar base de codigos</h2>
     <form method="post" action="/catalog/import" enctype="multipart/form-data">
+      {{antiForgeryField}}
       <div class="field"><label>Arquivo com aba Base - Cod Barras ou CSV equivalente</label><input type="file" name="file" accept=".csv,.txt,.xlsx,.xlsm" required></div>
       <button type="submit">Importar catalogo</button>
     </form>
@@ -514,15 +717,16 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, string q
     return body.ToString();
 }
 
-static string RenderRules(IReadOnlyList<ConversionRule> rules)
+static string RenderRules(IReadOnlyList<ConversionRule> rules, string antiForgeryField)
 {
     var body = new StringBuilder();
-    body.AppendLine("""
+    body.AppendLine($$"""
 <h1>Regras de conversao</h1>
 <div class="grid two">
   <section class="panel">
     <h2>Nova regra</h2>
     <form method="post" action="/rules">
+      {{antiForgeryField}}
       <div class="field"><label>Nome</label><input name="name" required></div>
       <div class="field"><label>Tipo</label><select name="rule_type"><option value="Pesavel">Pesavel</option><option value="FardoCaixa">Fardo/caixa</option></select></div>
       <div class="field"><label>Padrao Regex ou texto</label><input name="pattern" required></div>
@@ -550,7 +754,7 @@ static string RenderRules(IReadOnlyList<ConversionRule> rules)
   <td>{rule.Multiplier:0.####}</td>
   <td>{HtmlView.E(rule.TargetUnit)}</td>
   <td>{(rule.RequiresReview ? "Sim" : "Nao")}</td>
-  <td><form method="post" action="/rules/{rule.Id}/toggle"><button class="secondary" type="submit">Alternar</button></form></td>
+  <td><form method="post" action="/rules/{rule.Id}/toggle">{antiForgeryField}<button class="secondary" type="submit">Alternar</button></form></td>
 </tr>
 """);
     }
@@ -629,6 +833,17 @@ static async Task<UserAccount> CurrentUserAsync(HttpContext context, AppReposito
 static bool TryDate(string value, out DateOnly date)
 {
     return DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
+}
+
+static string AntiForgeryField(IAntiforgery antiforgery, HttpContext context)
+{
+    var tokenSet = antiforgery.GetAndStoreTokens(context);
+    return $"""<input type="hidden" name="{HtmlView.E(tokenSet.FormFieldName)}" value="{HtmlView.E(tokenSet.RequestToken)}">""";
+}
+
+static bool LooksLikeEmail(string value)
+{
+    return value.Contains('@') && value.Contains('.');
 }
 
 static string Notice(HttpRequest request)

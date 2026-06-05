@@ -22,13 +22,13 @@ public sealed partial class CampaignImportService(
 
             if (matches.Count == 0)
             {
-                items.Add(BuildItem(campaign.Id, batch.Id, row, null, rules));
+                items.Add(EvaluateItem(campaign.Id, batch.Id, row, null, rules));
                 continue;
             }
 
             foreach (var match in matches)
             {
-                items.Add(BuildItem(campaign.Id, batch.Id, row, match, rules));
+                items.Add(EvaluateItem(campaign.Id, batch.Id, row, match, rules));
             }
         }
 
@@ -39,7 +39,7 @@ public sealed partial class CampaignImportService(
         return batch;
     }
 
-    private static CampaignItem BuildItem(
+    internal static CampaignItem EvaluateItem(
         Guid campaignId,
         Guid batchId,
         RawCampaignRow row,
@@ -136,7 +136,7 @@ public sealed partial class CampaignImportService(
             now);
     }
 
-    private static List<CampaignItem> MarkDuplicateBarcodes(List<CampaignItem> items)
+    internal static List<CampaignItem> MarkDuplicateBarcodes(List<CampaignItem> items)
     {
         var duplicateBarcodes = items
             .Where(x => !string.IsNullOrWhiteSpace(x.Barcode))

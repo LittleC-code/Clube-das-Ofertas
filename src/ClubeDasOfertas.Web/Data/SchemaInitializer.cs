@@ -11,29 +11,44 @@ public sealed class SchemaInitializer(AppDb db, IConfiguration configuration, Ap
         await using var command = new NpgsqlCommand(SchemaSql, connection);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
-        await SeedUsersAsync(cancellationToken);
+        await SeedConfiguredUsersAsync(cancellationToken);
         await SeedRulesAsync(cancellationToken);
     }
 
-    private async Task SeedUsersAsync(CancellationToken cancellationToken)
+    private async Task SeedConfiguredUsersAsync(CancellationToken cancellationToken)
     {
-        var adminEmail = configuration["App:DefaultAdminEmail"] ?? "admin@clube.local";
-        var adminPassword = configuration["App:DefaultAdminPassword"] ?? "Admin@123";
-        var operatorEmail = configuration["App:DefaultOperatorEmail"] ?? "operador@clube.local";
-        var operatorPassword = configuration["App:DefaultOperatorPassword"] ?? "Operador@123";
-
-        await repository.EnsureUserAsync(
-            adminEmail,
+        await EnsureConfiguredUserAsync(
+            configuration["App:BootstrapAdminEmail"],
+            configuration["App:BootstrapAdminPassword"],
             "Administrador",
             Roles.Admin,
-            adminPassword,
             cancellationToken);
 
-        await repository.EnsureUserAsync(
-            operatorEmail,
+        await EnsureConfiguredUserAsync(
+            configuration["App:BootstrapOperatorEmail"],
+            configuration["App:BootstrapOperatorPassword"],
             "Operador",
             Roles.Operator,
-            operatorPassword,
+            cancellationToken);
+    }
+
+    private async Task EnsureConfiguredUserAsync(
+        string? email,
+        string? password,
+        string displayName,
+        string role,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+        {
+            return;
+        }
+
+        await repository.EnsureUserAsync(
+            email,
+            displayName,
+            role,
+            password,
             cancellationToken);
     }
 
