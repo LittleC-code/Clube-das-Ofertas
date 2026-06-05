@@ -153,6 +153,17 @@ WHERE id = @id;
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task DeleteCampaignAsync(Guid campaignId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await db.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+DELETE FROM campaigns
+WHERE id = @id;
+""", connection);
+        command.Parameters.AddWithValue("@id", campaignId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<ProductCatalogEntry>> SearchCatalogAsync(string query, CancellationToken cancellationToken = default)
     {
         var entries = new List<ProductCatalogEntry>();
@@ -422,6 +433,60 @@ WHERE id = @id;
         command.Parameters.AddWithValue("@blocking_reasons", Pack(blockingReasons));
         command.Parameters.AddWithValue("@updated_at", DateTimeOffset.UtcNow);
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task UpdateCampaignItemsAsync(IReadOnlyList<CampaignItem> items, CancellationToken cancellationToken = default)
+    {
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        await using var connection = await db.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        foreach (var item in items)
+        {
+            await using var command = new NpgsqlCommand("""
+UPDATE campaign_items
+SET source_row = @source_row,
+    source = @source,
+    original_vigency = @original_vigency,
+    description_tabloid = @description_tabloid,
+    normalized_description_tabloid = @normalized_description_tabloid,
+    quantity_raw = @quantity_raw,
+    quantity = @quantity,
+    unit = @unit,
+    original_price_sale = @original_price_sale,
+    original_price_club = @original_price_club,
+    final_price_sale = @final_price_sale,
+    final_price_club = @final_price_club,
+    description_solidus = @description_solidus,
+    barcode = @barcode,
+    code_type = @code_type,
+    risk_flags = @risk_flags,
+    blocking_reasons = @blocking_reasons,
+    review_required = @review_required,
+    review_status = @review_status,
+    updated_at = @updated_at
+WHERE id = @id;
+""", connection, transaction);
+            AddCampaignItemParameters(command, item);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var updateCampaign = new NpgsqlCommand("""
+UPDATE campaigns
+SET updated_at = @updated_at
+WHERE id = @campaign_id;
+""", connection, transaction))
+        {
+            updateCampaign.Parameters.AddWithValue("@campaign_id", items[0].CampaignId);
+            updateCampaign.Parameters.AddWithValue("@updated_at", DateTimeOffset.UtcNow);
+            await updateCampaign.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task AddReviewDecisionAsync(ReviewDecision decision, CancellationToken cancellationToken = default)

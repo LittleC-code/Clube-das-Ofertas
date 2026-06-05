@@ -8,9 +8,10 @@ public sealed partial class CampaignImportService(
     SpreadsheetImporter importer,
     AppRepository repository)
 {
-    public async Task<ImportBatch> ImportAsync(Campaign campaign, IFormFile file, UserAccount user, CancellationToken cancellationToken = default)
+    public async Task<ImportBatch> ImportAsync(Campaign campaign, IFormFile file, UserAccount user, string preferredSheet = SpreadsheetImporter.DefaultCampaignSheetName, CancellationToken cancellationToken = default)
     {
-        var rawRows = await importer.ReadCampaignRowsAsync(file, cancellationToken);
+        var selectedSheet = string.IsNullOrWhiteSpace(preferredSheet) ? SpreadsheetImporter.DefaultCampaignSheetName : preferredSheet.Trim();
+        var rawRows = await importer.ReadCampaignRowsAsync(file, selectedSheet, cancellationToken);
         var rules = (await repository.ListRulesAsync(cancellationToken)).Where(x => x.IsActive).ToList();
         var items = new List<CampaignItem>();
         var batch = new ImportBatch(Guid.NewGuid(), campaign.Id, file.FileName, user.Id, DateTimeOffset.UtcNow, rawRows.Count);
@@ -34,7 +35,7 @@ public sealed partial class CampaignImportService(
 
         items = MarkDuplicateBarcodes(items);
         await repository.ReplaceCampaignItemsAsync(batch, items, cancellationToken);
-        await repository.AddAuditAsync(user.Id, user.Email, "Importou campanha", "Campaign", campaign.Id, $"{file.FileName} ({items.Count} linhas processadas)", cancellationToken);
+        await repository.AddAuditAsync(user.Id, user.Email, "Importou campanha", "Campaign", campaign.Id, $"{file.FileName} / aba {selectedSheet} ({items.Count} linhas processadas)", cancellationToken);
 
         return batch;
     }
@@ -138,6 +139,15 @@ public sealed partial class CampaignImportService(
 
     internal static List<CampaignItem> MarkDuplicateBarcodes(List<CampaignItem> items)
     {
+        items = items
+            .Select(item => item with
+            {
+                RiskFlags = item.RiskFlags
+                    .Where(flag => !string.Equals(flag, "DUPLICIDADE", StringComparison.OrdinalIgnoreCase))
+                    .ToList()
+            })
+            .ToList();
+
         var duplicateBarcodes = items
             .Where(x => !string.IsNullOrWhiteSpace(x.Barcode))
             .GroupBy(x => x.Barcode)

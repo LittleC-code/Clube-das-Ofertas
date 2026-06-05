@@ -36,10 +36,26 @@ await using (var stream = File.OpenRead(workbookPath))
 await using (var stream = File.OpenRead(workbookPath))
 {
     var file = new FormFile(stream, 0, stream.Length, "file", Path.GetFileName(workbookPath));
+    var worksheetNames = await importer.ListWorksheetNamesAsync(file);
+    Assert(worksheetNames.Contains(SpreadsheetImporter.DefaultCampaignSheetName), "Workbook deve expor a aba padrao de campanha.");
+}
+
+await using (var stream = File.OpenRead(workbookPath))
+{
+    var file = new FormFile(stream, 0, stream.Length, "file", Path.GetFileName(workbookPath));
     var campaignRows = await importer.ReadCampaignRowsAsync(file);
     Assert(campaignRows.Count >= 40, "Aba Base Clube - CLT deve produzir linhas de campanha.");
     Assert(campaignRows.Any(x => x.DescriptionTabloid.Contains("Alho", StringComparison.OrdinalIgnoreCase)), "Importacao deve preservar descricoes de itens.");
     Assert(Parsing.TryMoney(campaignRows[0].PriceSaleRaw, out var importedSale) && importedSale == 2.49m, "Valores numericos de XLSM devem ser arredondados para moeda.");
+}
+
+await using (var stream = File.OpenRead(workbookPath))
+{
+    var file = new FormFile(stream, 0, stream.Length, "file", Path.GetFileName(workbookPath));
+    await AssertThrowsWhereAsync<ImportException>(
+        () => importer.ReadCampaignRowsAsync(file, "Aba inexistente"),
+        ex => ex.Message.Contains("Abas disponiveis:", StringComparison.OrdinalIgnoreCase),
+        "A importacao deve informar as abas disponiveis quando a aba escolhida nao existir.");
 }
 
 var weightedItem = CampaignImportService.EvaluateItem(
@@ -81,6 +97,13 @@ var duplicateItems = CampaignImportService.MarkDuplicateBarcodes(
 ]);
 Assert(duplicateItems.All(x => x.RiskFlags.Contains("DUPLICIDADE")), "Codigos repetidos devem ser marcados como duplicidade.");
 
+var duplicateClearedItems = CampaignImportService.MarkDuplicateBarcodes(
+[
+    duplicateItems[0] with { Barcode = "7891" },
+    duplicateItems[1] with { Barcode = "7892" }
+]);
+Assert(duplicateClearedItems.All(x => !x.RiskFlags.Contains("DUPLICIDADE")), "Duplicidade antiga deve ser removida quando os codigos deixam de colidir.");
+
 await using (var stream = new MemoryStream([0x50, 0x4B, 0x03, 0x04]))
 {
     var file = new FormFile(stream, 0, SpreadsheetImporter.MaxUploadBytes + 1, "file", "grande.xlsx");
@@ -119,6 +142,25 @@ static async Task AssertThrowsAsync<TException>(Func<Task> action, string messag
     catch (TException)
     {
         return;
+    }
+
+    throw new InvalidOperationException(message);
+}
+
+static async Task AssertThrowsWhereAsync<TException>(Func<Task> action, Func<TException, bool> predicate, string message)
+    where TException : Exception
+{
+    try
+    {
+        await action();
+    }
+    catch (TException ex) when (predicate(ex))
+    {
+        return;
+    }
+    catch (TException)
+    {
+        throw new InvalidOperationException(message);
     }
 
     throw new InvalidOperationException(message);

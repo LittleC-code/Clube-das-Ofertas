@@ -17,6 +17,7 @@ Documentacao de fluxo e manutencao:
 
 1. Instale o SDK .NET 10.
 2. Configure as variaveis locais do banco. O repositorio inclui um exemplo em `.env.example`.
+   Neste ambiente local, a senha foi salva no arquivo `.env`, que e ignorado pelo git.
 3. Suba um PostgreSQL local. Se tiver Docker:
 
 ```powershell
@@ -29,13 +30,37 @@ docker compose up -d
 dotnet build ClubeDasOfertas.slnx
 ```
 
-5. Rode a aplicacao:
+5. Iniciar a aplicacao:
 
 ```powershell
-dotnet run --project src\ClubeDasOfertas.Web\ClubeDasOfertas.Web.csproj
+Get-Content .env | ForEach-Object {
+  if ($_ -match '^\s*([^#=]+)=(.*)$') {
+    [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process')
+  }
+}
+dotnet run --project src\ClubeDasOfertas.Web\ClubeDasOfertas.Web.csproj --urls http://0.0.0.0:5088
 ```
 
-6. Acesse `http://localhost:5088` localmente ou `http://IP-DA-MAQUINA:5088` pela rede.
+6. Pausar a aplicacao:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "name = 'dotnet.exe'" | Where-Object { $_.CommandLine -like '*ClubeDasOfertas.Web.csproj*' } | Select-Object ProcessId, CommandLine
+Stop-Process -Id SEU_PROCESS_ID
+```
+
+7. Reiniciar a aplicacao:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "name = 'dotnet.exe'" | Where-Object { $_.CommandLine -like '*ClubeDasOfertas.Web.csproj*' } | ForEach-Object { Stop-Process -Id $_.ProcessId }
+Get-Content .env | ForEach-Object {
+  if ($_ -match '^\s*([^#=]+)=(.*)$') {
+    [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process')
+  }
+}
+dotnet run --project src\ClubeDasOfertas.Web\ClubeDasOfertas.Web.csproj --urls http://0.0.0.0:5088
+```
+
+8. Acesse `http://localhost:5088` localmente ou `http://IP-DA-MAQUINA:5088` pela rede.
 
 Se ainda nao existir nenhum usuario no banco, o sistema abre em `/setup` e pede a criacao do primeiro administrador.
 
@@ -85,6 +110,8 @@ Informe a senha por uma destas opcoes:
 - `ConnectionStrings__PostgreSqlPassword`
 - `POSTGRESQL_PASSWORD`
 - `POSTGRES_PASSWORD`
+
+Para este ambiente local, o arquivo `.env` ja foi preenchido e esta fora do versionamento.
 
 ### Usuarios bootstrap opcionais
 

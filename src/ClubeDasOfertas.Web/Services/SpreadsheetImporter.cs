@@ -12,10 +12,12 @@ public sealed class ImportException(string message) : Exception(message);
 public sealed partial class SpreadsheetImporter
 {
     internal const long MaxUploadBytes = 10 * 1024 * 1024;
+    public const string DefaultCampaignSheetName = "Base Clube - CLT";
+    public const string DefaultCatalogSheetName = "Base - Cod Barras";
 
-    public async Task<IReadOnlyList<RawCampaignRow>> ReadCampaignRowsAsync(IFormFile file, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<RawCampaignRow>> ReadCampaignRowsAsync(IFormFile file, string preferredSheet = DefaultCampaignSheetName, CancellationToken cancellationToken = default)
     {
-        var rows = await ReadRowsAsync(file, "Base Clube - CLT", cancellationToken);
+        var rows = await ReadRowsAsync(file, preferredSheet, cancellationToken);
         var headerIndex = FindHeaderRow(rows, "DESCRICAO NO TABLOIDE", "VENDA CLUBE");
         if (headerIndex < 0)
         {
@@ -55,7 +57,7 @@ public sealed partial class SpreadsheetImporter
 
     public async Task<IReadOnlyList<CatalogImportRow>> ReadCatalogRowsAsync(IFormFile file, CancellationToken cancellationToken = default)
     {
-        var rows = await ReadRowsAsync(file, "Base - Cod Barras", cancellationToken);
+        var rows = await ReadRowsAsync(file, DefaultCatalogSheetName, cancellationToken);
         var headerIndex = FindHeaderRow(rows, "DESCRICAO TABLOIDE", "COD BARRAS");
         if (headerIndex < 0)
         {
@@ -88,6 +90,39 @@ public sealed partial class SpreadsheetImporter
         }
 
         return result;
+    }
+
+    public async Task<IReadOnlyList<string>> ListWorksheetNamesAsync(IFormFile file, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(file.FileName))
+        {
+            throw new ImportException("Arquivo sem nome.");
+        }
+
+        if (file.Length == 0)
+        {
+            throw new ImportException("Arquivo vazio.");
+        }
+
+        if (file.Length > MaxUploadBytes)
+        {
+            throw new ImportException("Arquivo excede o limite de 10 MB.");
+        }
+
+        await using var stream = file.OpenReadStream();
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory, cancellationToken);
+        memory.Position = 0;
+
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (extension is not (".xlsx" or ".xlsm"))
+        {
+            return Array.Empty<string>();
+        }
+
+        EnsureZipSignature(memory);
+        memory.Position = 0;
+        return ReadWorksheetNames(memory);
     }
 
     private static async Task<IReadOnlyList<IReadOnlyList<string>>> ReadRowsAsync(IFormFile file, string preferredSheet, CancellationToken cancellationToken)
@@ -204,8 +239,8 @@ public sealed partial class SpreadsheetImporter
         {
             using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
             var sharedStrings = ReadSharedStrings(archive);
-            var sheetPath = ResolveSheetPath(archive, preferredSheet);
-            var sheetEntry = archive.GetEntry(sheetPath) ?? throw new ImportException($"A aba '{preferredSheet}' nao foi encontrada no arquivo.");
+            var selection = ResolveSheetSelection(archive, preferredSheet);
+            var sheetEntry = archive.GetEntry(selection.Path) ?? throw new ImportException($"A aba '{selection.Name}' nao foi encontrada no arquivo.");
 
             using var sheetStream = sheetEntry.Open();
             var sheet = LoadXml(sheetStream);
@@ -270,32 +305,49 @@ public sealed partial class SpreadsheetImporter
             .ToList();
     }
 
-    private static string ResolveSheetPath(ZipArchive archive, string preferredSheet)
+    private static IReadOnlyList<string> ReadWorksheetNames(Stream stream)
     {
-        var workbookEntry = archive.GetEntry("xl/workbook.xml") ?? throw new ImportException("Arquivo XLSX/XLSM sem workbook.xml.");
-        var relationshipsEntry = archive.GetEntry("xl/_rels/workbook.xml.rels") ?? throw new ImportException("Arquivo XLSX/XLSM sem relacionamentos de abas.");
+        try
+        {
+            using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+            return ReadWorkbookSheets(archive)
+                .Select(x => x.Name)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
+        }
+        catch (InvalidDataException)
+        {
+            throw new ImportException("O arquivo XLSX/XLSM parece corrompido ou fora do formato esperado.");
+        }
+        catch (XmlException)
+        {
+            throw new ImportException("O conteudo XML do arquivo esta invalido ou corrompido.");
+        }
+    }
 
-        using var workbookStream = workbookEntry.Open();
-        using var relsStream = relationshipsEntry.Open();
-        var workbook = LoadXml(workbookStream);
-        var rels = LoadXml(relsStream);
-        var preferred = TextNormalizer.NormalizeKey(preferredSheet);
-
-        var sheets = workbook.Descendants()
-            .Where(x => x.Name.LocalName == "sheet")
-            .Select(x => new
-            {
-                Name = (string?)x.Attribute("name") ?? "",
-                RelationshipId = x.Attributes().FirstOrDefault(a => a.Name.LocalName == "id")?.Value ?? ""
-            })
-            .ToList();
-
-        var selected = sheets.FirstOrDefault(x => TextNormalizer.NormalizeKey(x.Name) == preferred) ?? sheets.FirstOrDefault();
-        if (selected is null)
+    private static (string Name, string Path) ResolveSheetSelection(ZipArchive archive, string preferredSheet)
+    {
+        var sheets = ReadWorkbookSheets(archive);
+        if (sheets.Count == 0)
         {
             throw new ImportException("Nenhuma aba encontrada no arquivo XLSX/XLSM.");
         }
 
+        var normalizedPreferred = TextNormalizer.NormalizeKey(preferredSheet);
+        var selected = sheets[0];
+        if (!string.IsNullOrWhiteSpace(normalizedPreferred))
+        {
+            var matchIndex = sheets.FindIndex(x => TextNormalizer.NormalizeKey(x.Name) == normalizedPreferred);
+            if (matchIndex < 0)
+            {
+                var availableSheets = string.Join(", ", sheets.Select(x => x.Name));
+                throw new ImportException($"A aba '{preferredSheet}' nao foi encontrada. Abas disponiveis: {availableSheets}.");
+            }
+
+            selected = sheets[matchIndex];
+        }
+
+        var rels = ReadWorkbookRelationships(archive);
         var target = rels.Descendants()
             .FirstOrDefault(x => x.Name.LocalName == "Relationship" && ((string?)x.Attribute("Id") ?? "") == selected.RelationshipId)
             ?.Attribute("Target")
@@ -307,7 +359,32 @@ public sealed partial class SpreadsheetImporter
         }
 
         target = target.Replace('\\', '/').TrimStart('/');
-        return target.StartsWith("xl/", StringComparison.OrdinalIgnoreCase) ? target : $"xl/{target}";
+        return (selected.Name, target.StartsWith("xl/", StringComparison.OrdinalIgnoreCase) ? target : $"xl/{target}");
+    }
+
+    private static List<(string Name, string RelationshipId)> ReadWorkbookSheets(ZipArchive archive)
+    {
+        var workbook = ReadWorkbookXml(archive);
+        return workbook.Descendants()
+            .Where(x => x.Name.LocalName == "sheet")
+            .Select(x => (
+                Name: (string?)x.Attribute("name") ?? "",
+                RelationshipId: x.Attributes().FirstOrDefault(a => a.Name.LocalName == "id")?.Value ?? ""))
+            .ToList();
+    }
+
+    private static XDocument ReadWorkbookXml(ZipArchive archive)
+    {
+        var workbookEntry = archive.GetEntry("xl/workbook.xml") ?? throw new ImportException("Arquivo XLSX/XLSM sem workbook.xml.");
+        using var workbookStream = workbookEntry.Open();
+        return LoadXml(workbookStream);
+    }
+
+    private static XDocument ReadWorkbookRelationships(ZipArchive archive)
+    {
+        var relationshipsEntry = archive.GetEntry("xl/_rels/workbook.xml.rels") ?? throw new ImportException("Arquivo XLSX/XLSM sem relacionamentos de abas.");
+        using var relsStream = relationshipsEntry.Open();
+        return LoadXml(relsStream);
     }
 
     private static string ReadCellValue(XElement cell, IReadOnlyList<string> sharedStrings)
