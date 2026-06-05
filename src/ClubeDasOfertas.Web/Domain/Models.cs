@@ -17,6 +17,8 @@ public static class RuleTypes
 {
     public const string Weighted = "Pesavel";
     public const string Package = "FardoCaixa";
+    public const string PackageBale = "Fardo";
+    public const string PackageBox = "Caixa";
 }
 
 public static class ReviewStatus
@@ -55,6 +57,7 @@ public sealed record ConversionRule(
     string Pattern,
     decimal Multiplier,
     string TargetUnit,
+    string CategoryScope,
     bool RequiresReview,
     bool IsActive,
     DateTimeOffset CreatedAt,

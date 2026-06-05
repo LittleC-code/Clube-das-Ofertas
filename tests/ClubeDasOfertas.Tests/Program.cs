@@ -23,7 +23,8 @@ Assert(Parsing.CodeType("7896864400031") == "EAN", "Codigo longo deve ser classi
 
 var importer = new SpreadsheetImporter();
 var weightedRule = NewRule("Pesaveis", RuleTypes.Weighted, @"\b(ALHO|MUSSARELA|100\s*G)\b", 10m, "Kg", true);
-var packageRule = NewRule("Fardos", RuleTypes.Package, @"\b(FD|C/?\d+|CX/?\d+)\b", 1m, "", true);
+var fardoRule = NewRule("Fardos", RuleTypes.PackageBale, @"\b(FD|FARDO|FARDOS)\b", 2m, "Unidades", true);
+var caixaRule = NewRule("Caixas perfumaria", RuleTypes.PackageBox, @"\b(CX/?\d+|C/?\d+|C\s+\d+|CAIXA|CAIXAS)\b", 3m, "Unidades", true, "Perfumaria");
 
 await using (var stream = File.OpenRead(workbookPath))
 {
@@ -85,10 +86,32 @@ var packageItem = CampaignImportService.EvaluateItem(
     Guid.NewGuid(),
     new RawCampaignRow(4, "App", "VIGENCIA 05 A 08", "Cerveja Long Neck 330ml", "20 Fardos", "41,94", "35,94"),
     NewCatalog("Cerveja Long Neck 330ml", "CERV LONG NECK FD C/6", "7891991304887"),
-    [packageRule]);
+    [fardoRule]);
 
 Assert(packageItem.RiskFlags.Contains("FARDO_CAIXA"), "Fardo/caixa deve ser detectado.");
-Assert(packageItem.BlockingReasons.Contains("Fardo/caixa pendente"), "Fardo/caixa deve bloquear exportacao ate revisao.");
+Assert(packageItem.RiskFlags.Contains("FARDO"), "Fardo deve receber flag especifica.");
+Assert(packageItem.BlockingReasons.Contains("Fardo pendente"), "Fardo deve bloquear exportacao ate revisao.");
+Assert(packageItem.FinalPriceSale == 83.88m && packageItem.FinalPriceClub == 71.88m, "Fardo deve poder aplicar multiplicador proprio.");
+
+var caixaItem = CampaignImportService.EvaluateItem(
+    Guid.NewGuid(),
+    Guid.NewGuid(),
+    new RawCampaignRow(5, "App", "VIGENCIA 05 A 08", "Absorvente basico", "12 Unidades", "10,00", "8,00"),
+    NewCatalog("Absorvente basico", "ABS SUAVE CX/12", "7890000000002", "Perfumaria"),
+    [caixaRule]);
+
+Assert(caixaItem.RiskFlags.Contains("CAIXA"), "Caixa deve receber flag especifica.");
+Assert(caixaItem.BlockingReasons.Contains("Caixa pendente"), "Caixa deve bloquear exportacao ate revisao.");
+Assert(caixaItem.FinalPriceSale == 30.00m && caixaItem.FinalPriceClub == 24.00m, "Caixa deve poder aplicar multiplicador proprio.");
+
+var caixaCategoriaErrada = CampaignImportService.EvaluateItem(
+    Guid.NewGuid(),
+    Guid.NewGuid(),
+    new RawCampaignRow(6, "App", "VIGENCIA 05 A 08", "Absorvente basico", "12 Unidades", "10,00", "8,00"),
+    NewCatalog("Absorvente basico", "ABS SUAVE CX/12", "7890000000003", "Mercearia"),
+    [caixaRule]);
+
+Assert(!caixaCategoriaErrada.RiskFlags.Contains("CAIXA"), "Regra de caixa com categoria alvo nao deve aplicar fora da categoria.");
 
 var duplicateItems = CampaignImportService.MarkDuplicateBarcodes(
 [
@@ -182,20 +205,20 @@ static string FindRepoRoot(string start)
     throw new DirectoryNotFoundException("Nao encontrei a raiz do repositorio.");
 }
 
-static ConversionRule NewRule(string name, string type, string pattern, decimal multiplier, string targetUnit, bool requiresReview)
+static ConversionRule NewRule(string name, string type, string pattern, decimal multiplier, string targetUnit, bool requiresReview, string categoryScope = "")
 {
     var now = DateTimeOffset.UtcNow;
-    return new ConversionRule(Guid.NewGuid(), name, type, pattern, multiplier, targetUnit, requiresReview, true, now, now);
+    return new ConversionRule(Guid.NewGuid(), name, type, pattern, multiplier, targetUnit, categoryScope, requiresReview, true, now, now);
 }
 
-static ProductCatalogEntry NewCatalog(string descriptionTabloid, string descriptionSolidus, string barcode)
+static ProductCatalogEntry NewCatalog(string descriptionTabloid, string descriptionSolidus, string barcode, string category = "Categoria")
 {
     var now = DateTimeOffset.UtcNow;
     return new ProductCatalogEntry(
         Guid.NewGuid(),
         descriptionTabloid,
         TextNormalizer.NormalizeKey(descriptionTabloid),
-        "Categoria",
+        category,
         descriptionSolidus,
         TextNormalizer.NormalizeKey(descriptionSolidus),
         barcode,

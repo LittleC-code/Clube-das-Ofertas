@@ -54,8 +54,10 @@ public sealed class SchemaInitializer(AppDb db, IConfiguration configuration, Ap
 
     private async Task SeedRulesAsync(CancellationToken cancellationToken)
     {
-        if ((await repository.ListRulesAsync(cancellationToken)).Count > 0)
+        var rules = await repository.ListRulesAsync(cancellationToken);
+        if (rules.Count > 0)
         {
+            await MigrateLegacyPackageRulesAsync(rules, cancellationToken);
             return;
         }
 
@@ -66,6 +68,7 @@ public sealed class SchemaInitializer(AppDb db, IConfiguration configuration, Ap
             @"\b(100\s*G|CADA\s*100\s*G|PRESUNTO|MORTADELA|ALHO\s*A\s*GRANEL|QUEIJO\s*MUSSARELA|MUSSARELA|SALAME)\b",
             10m,
             "Kg",
+            "",
             true,
             true,
             DateTimeOffset.UtcNow,
@@ -73,15 +76,69 @@ public sealed class SchemaInitializer(AppDb db, IConfiguration configuration, Ap
 
         await repository.AddRuleAsync(new ConversionRule(
             Guid.NewGuid(),
-            "Fardos e caixas",
-            RuleTypes.Package,
-            @"\b(CX/?\s*\d+|C/?\s*\d+|C\s+\d+|FD|FARDO|FARDOS|CAIXA|CAIXAS)\b",
+            "Fardos",
+            RuleTypes.PackageBale,
+            @"\b(FD|FARDO|FARDOS)\b",
             1m,
+            "",
             "",
             true,
             true,
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow), cancellationToken);
+
+        await repository.AddRuleAsync(new ConversionRule(
+            Guid.NewGuid(),
+            "Caixas",
+            RuleTypes.PackageBox,
+            @"\b(CX/?\s*\d+|C/?\s*\d+|C\s+\d+|CAIXA|CAIXAS)\b",
+            1m,
+            "",
+            "",
+            true,
+            true,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow), cancellationToken);
+    }
+
+    private async Task MigrateLegacyPackageRulesAsync(IReadOnlyList<ConversionRule> rules, CancellationToken cancellationToken)
+    {
+        if (rules.Any(x => x.RuleType is RuleTypes.PackageBale or RuleTypes.PackageBox))
+        {
+            return;
+        }
+
+        var legacyRules = rules.Where(x => x.RuleType == RuleTypes.Package).ToList();
+        foreach (var legacyRule in legacyRules)
+        {
+            await repository.AddRuleAsync(new ConversionRule(
+                Guid.NewGuid(),
+                $"{legacyRule.Name} - Fardos",
+                RuleTypes.PackageBale,
+                @"\b(FD|FARDO|FARDOS)\b",
+                legacyRule.Multiplier,
+                legacyRule.TargetUnit,
+                legacyRule.CategoryScope,
+                legacyRule.RequiresReview,
+                legacyRule.IsActive,
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow), cancellationToken);
+
+            await repository.AddRuleAsync(new ConversionRule(
+                Guid.NewGuid(),
+                $"{legacyRule.Name} - Caixas",
+                RuleTypes.PackageBox,
+                @"\b(CX/?\s*\d+|C/?\s*\d+|C\s+\d+|CAIXA|CAIXAS)\b",
+                legacyRule.Multiplier,
+                legacyRule.TargetUnit,
+                legacyRule.CategoryScope,
+                legacyRule.RequiresReview,
+                legacyRule.IsActive,
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow), cancellationToken);
+
+            await repository.SetRuleActiveAsync(legacyRule.Id, false, cancellationToken);
+        }
     }
 
     private const string SchemaSql = """
@@ -122,11 +179,15 @@ CREATE TABLE IF NOT EXISTS conversion_rules (
     pattern text NOT NULL,
     multiplier numeric(12,4) NOT NULL,
     target_unit text NOT NULL,
+    category_scope text NOT NULL DEFAULT '',
     requires_review boolean NOT NULL,
     is_active boolean NOT NULL,
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL
 );
+
+ALTER TABLE conversion_rules
+    ADD COLUMN IF NOT EXISTS category_scope text NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS campaigns (
     id uuid PRIMARY KEY,
