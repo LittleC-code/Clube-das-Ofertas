@@ -36,7 +36,7 @@ public static class HtmlView
             ? $"""<div class="header-title">{E(string.IsNullOrWhiteSpace(headerTitle) ? title : headerTitle)}</div>"""
             : "";
         var cornerBrand = isCampaignTheme
-            ? """<div class="page-endmark"><div class="corner-brand"><img src="/clube-das-ofertas-preferencial.png" alt="Clube Das Ofertas"></div></div>"""
+            ? """<div class="header-brandmark"><img src="/clube-das-ofertas-preferencial.png" alt="Clube Das Ofertas"></div>"""
             : "";
         var bodyClass = string.IsNullOrWhiteSpace(pageClass) ? "" : $" class=\"{E(pageClass)}\"";
         var nav = signedIn
@@ -189,13 +189,13 @@ public static class HtmlView
     }
     .userbox { color: var(--muted); font-size: 13px; white-space: nowrap; }
     .userbox span { margin-left: 6px; color: var(--brand); font-weight: 700; }
-    main { padding: 22px 24px 36px; max-width: 1460px; margin: 0 auto; }
-    .page-endmark {
+    .header-userzone {
       display: flex;
+      align-items: center;
       justify-content: flex-end;
-      margin-top: 24px;
-      margin-right: -24px;
+      gap: 12px;
     }
+    main { padding: 22px 24px 36px; max-width: 1460px; margin: 0 auto; }
     h1 { font-size: 24px; margin: 0 0 16px; }
     h2 { font-size: 17px; margin: 0 0 12px; }
     .grid { display: grid; gap: 16px; }
@@ -513,13 +513,13 @@ public static class HtmlView
       border-radius: 6px;
       padding: 22px;
     }
-    .corner-brand {
+    .header-brandmark {
       pointer-events: none;
     }
-    .corner-brand img {
+    .header-brandmark img {
       display: block;
-      width: min(140px, 10vw);
-      min-width: 92px;
+      width: min(82px, 6vw);
+      min-width: 60px;
       height: auto;
       opacity: 0.88;
     }
@@ -718,13 +718,12 @@ public static class HtmlView
       .userbox {
         white-space: normal;
       }
-      .page-endmark {
-        margin-top: 18px;
-        margin-right: -16px;
+      .header-userzone {
+        justify-content: flex-start;
       }
-      .corner-brand img {
-        width: min(102px, 22vw);
-        min-width: 72px;
+      .header-brandmark img {
+        width: min(76px, 18vw);
+        min-width: 56px;
       }
       .campaign-shell { grid-template-columns: 1fr; }
       .catalog-layout { grid-template-columns: 1fr; }
@@ -781,12 +780,14 @@ public static class HtmlView
   <header>
     {{brand}}
     {{headerTitleHtml}}
-    {{nav}}
+    <div class="header-userzone">
+      {{nav}}
+      {{cornerBrand}}
+    </div>
   </header>
   <main>
     <div id="page-notice">{{noticeHtml}}</div>
     {{body}}
-    {{cornerBrand}}
   </main>
   <script>
     (() => {
