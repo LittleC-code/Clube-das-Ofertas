@@ -1,0 +1,9 @@
+# Example Codex project/user configuration fragment.
+# Keep this as a reference; review current Codex docs before applying.
+
+# Add extra fallback names only if your repo already uses them.
+project_doc_fallback_filenames = ["CLAUDE.md", ".github/copilot-instructions.md"]
+
+# Raise only when critical instructions are being truncated.
+project_doc_max_bytes = 65536
+
