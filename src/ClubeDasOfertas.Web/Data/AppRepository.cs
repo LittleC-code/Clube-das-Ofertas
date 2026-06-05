@@ -164,25 +164,29 @@ WHERE id = @id;
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<ProductCatalogEntry>> SearchCatalogAsync(string query, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ProductCatalogEntry>> SearchCatalogAsync(string query, string category = "", CancellationToken cancellationToken = default)
     {
         var entries = new List<ProductCatalogEntry>();
         var normalized = TextNormalizer.NormalizeKey(query);
+        var normalizedCategory = TextNormalizer.NormalizeKey(category);
 
         await using var connection = await db.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
 SELECT id, description_tabloid, normalized_description_tabloid, category, description_solidus,
        normalized_description_solidus, barcode, code_type, created_at, updated_at
 FROM product_catalog_entries
-WHERE @query = ''
-   OR normalized_description_tabloid LIKE '%' || @query || '%'
-   OR normalized_description_solidus LIKE '%' || @query || '%'
-   OR barcode LIKE '%' || @raw || '%'
+WHERE (@category = '' OR UPPER(COALESCE(category, '')) = @category)
+  AND (
+    @query = ''
+    OR normalized_description_tabloid LIKE '%' || @query || '%'
+    OR normalized_description_solidus LIKE '%' || @query || '%'
+    OR barcode LIKE '%' || @raw || '%'
+  )
 ORDER BY description_tabloid, description_solidus
-LIMIT 200;
 """, connection);
         command.Parameters.AddWithValue("@query", normalized);
         command.Parameters.AddWithValue("@raw", query.Trim());
+        command.Parameters.AddWithValue("@category", normalizedCategory);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -191,6 +195,26 @@ LIMIT 200;
         }
 
         return entries;
+    }
+
+    public async Task<IReadOnlyList<(string Category, int Count)>> ListCatalogCategoriesAsync(CancellationToken cancellationToken = default)
+    {
+        var categories = new List<(string Category, int Count)>();
+        await using var connection = await db.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+SELECT COALESCE(NULLIF(TRIM(category), ''), 'Sem categoria') AS category_name, COUNT(*)
+FROM product_catalog_entries
+GROUP BY category_name
+ORDER BY COUNT(*) DESC, category_name;
+""", connection);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            categories.Add((reader.GetString(0), reader.GetInt32(1)));
+        }
+
+        return categories;
     }
 
     public async Task<IReadOnlyList<ProductCatalogEntry>> FindCatalogMatchesAsync(string normalizedDescription, CancellationToken cancellationToken = default)

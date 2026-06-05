@@ -24,9 +24,9 @@ public static class HtmlView
   <summary class="menu-trigger">MENU</summary>
   <div class="menu-popover">
     <a href="/campaigns">Campanhas</a>
-    <a href="/catalog">Catalogo</a>
+    <a href="/catalog">Catálogo</a>
     <a href="/rules">Regras</a>
-    <a href="/history">Historico</a>
+    <a href="/history">Histórico</a>
     <form method="post" action="/logout">{{antiForgeryField}}<button class="menu-link" type="submit">Sair</button></form>
   </div>
 </details>
@@ -47,9 +47,9 @@ public static class HtmlView
                 : $$"""
               <nav class="nav">
                 <a href="/campaigns">Campanhas</a>
-                <a href="/catalog">Catalogo</a>
+                <a href="/catalog">Catálogo</a>
                 <a href="/rules">Regras</a>
-                <a href="/history">Historico</a>
+                <a href="/history">Histórico</a>
                 <form method="post" action="/logout">{{antiForgeryField}}<button class="ghost" type="submit">Sair</button></form>
               </nav>
               <div class="userbox">{E(displayName)} <span>{E(role)}</span></div>
@@ -350,6 +350,107 @@ public static class HtmlView
       gap: 18px;
       align-items: start;
     }
+    .catalog-layout {
+      display: grid;
+      grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .catalog-sidebar {
+      position: sticky;
+      top: 82px;
+    }
+    .catalog-sidebar-section + .catalog-sidebar-section {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line-soft);
+    }
+    .catalog-summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .catalog-summary strong {
+      font-size: 22px;
+    }
+    .catalog-summary span {
+      color: var(--muted);
+    }
+    .catalog-summary + .catalog-summary {
+      margin-top: 10px;
+    }
+    .catalog-category-list {
+      display: grid;
+      gap: 8px;
+      max-height: 52vh;
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .catalog-category {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      text-decoration: none;
+      color: inherit;
+      background: transparent;
+    }
+    .catalog-category:hover {
+      background: #eef1f4;
+    }
+    .catalog-category strong {
+      font-size: 14px;
+    }
+    .catalog-category.active {
+      border-color: var(--brand);
+      background: rgba(15, 118, 110, 0.08);
+    }
+    .catalog-list {
+      display: grid;
+      gap: 12px;
+    }
+    .catalog-list-shell {
+      max-height: calc(100vh - 220px);
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 6px;
+    }
+    .catalog-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr);
+      gap: 16px;
+      align-items: start;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .catalog-item-main strong {
+      display: block;
+      font-size: 17px;
+      line-height: 1.35;
+    }
+    .catalog-item-main span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+    }
+    .catalog-item-meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .catalog-item-meta label {
+      margin-bottom: 4px;
+    }
+    .catalog-item-meta span {
+      display: block;
+      word-break: break-word;
+    }
     .campaign-list {
       display: flex;
       flex-direction: column;
@@ -588,6 +689,18 @@ public static class HtmlView
       background: #102a5a;
       color: #ffffff;
     }
+    body.page-campaign .catalog-sidebar-section + .catalog-sidebar-section,
+    body.page-campaign .catalog-item,
+    body.page-campaign .catalog-category {
+      border-color: #2b2b2b;
+    }
+    body.page-campaign .catalog-category:hover {
+      background: #141414;
+    }
+    body.page-campaign .catalog-category.active {
+      border-color: #d71912;
+      background: rgba(215, 25, 18, 0.18);
+    }
     @media (max-width: 900px) {
       header {
         grid-template-columns: 1fr;
@@ -614,6 +727,15 @@ public static class HtmlView
         min-width: 72px;
       }
       .campaign-shell { grid-template-columns: 1fr; }
+      .catalog-layout { grid-template-columns: 1fr; }
+      .catalog-sidebar { position: static; }
+      .catalog-list-shell { max-height: none; overflow: visible; padding-right: 0; }
+      .catalog-item {
+        grid-template-columns: 1fr;
+      }
+      .catalog-item-meta {
+        grid-template-columns: 1fr;
+      }
       .campaign-list-head { display: none; }
       .campaign-row {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -752,7 +874,7 @@ public static class HtmlView
           const extension = file.name.split('.').pop()?.toLowerCase() || '';
           if (extension === 'csv' || extension === 'txt') {
             updateSheetOptions(select, [{ value: defaultSheet, label: 'Arquivo sem abas (CSV/TXT)' }], defaultSheet);
-            setHint('Arquivos CSV ou TXT nao possuem abas. A importacao segue direto pelo arquivo.');
+            setHint('Arquivos CSV ou TXT não possuem abas. A importação segue direto pelo arquivo.');
             return;
           }
 
@@ -763,7 +885,7 @@ public static class HtmlView
           }
 
           updateSheetOptions(select, [{ value: defaultSheet, label: 'Carregando abas...' }], defaultSheet);
-          setHint('Lendo as abas disponiveis da planilha...');
+          setHint('Lendo as abas disponíveis da planilha...');
 
           try {
             const response = await fetch('/worksheets', {
@@ -784,7 +906,7 @@ public static class HtmlView
 
             if (!payload.supportsSheets) {
               updateSheetOptions(select, [{ value: defaultSheet, label: 'Arquivo sem abas (CSV/TXT)' }], defaultSheet);
-              setHint(payload.notice || 'Esse arquivo nao possui abas para selecionar.');
+              setHint(payload.notice || 'Esse arquivo não possui abas para selecionar.');
               return;
             }
 
