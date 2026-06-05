@@ -30,7 +30,7 @@ docker compose up -d
 dotnet build ClubeDasOfertas.slnx
 ```
 
-5. Iniciar a aplicacao:
+5. Iniciar o servico:
 
 ```powershell
 Get-Content .env | ForEach-Object {
@@ -41,23 +41,18 @@ Get-Content .env | ForEach-Object {
 dotnet run --project src\ClubeDasOfertas.Web\ClubeDasOfertas.Web.csproj --urls http://0.0.0.0:5088
 ```
 
-6. Pausar a aplicacao:
+Esse comando deixa a aplicacao ouvindo em `http://localhost:5088`.
 
-```powershell
-Get-CimInstance Win32_Process -Filter "name = 'dotnet.exe'" | Where-Object { $_.CommandLine -like '*ClubeDasOfertas.Web.csproj*' } | Select-Object ProcessId, CommandLine
-Stop-Process -Id SEU_PROCESS_ID
-```
-
-7. Reiniciar a aplicacao:
+6. Pausar o servico:
 
 ```powershell
 Get-CimInstance Win32_Process -Filter "name = 'dotnet.exe'" | Where-Object { $_.CommandLine -like '*ClubeDasOfertas.Web.csproj*' } | ForEach-Object { Stop-Process -Id $_.ProcessId }
-Get-Content .env | ForEach-Object {
-  if ($_ -match '^\s*([^#=]+)=(.*)$') {
-    [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process')
-  }
-}
-dotnet run --project src\ClubeDasOfertas.Web\ClubeDasOfertas.Web.csproj --urls http://0.0.0.0:5088
+```
+
+7. Reiniciar o servico:
+
+```powershell
+Execute novamente o comando do passo 5.
 ```
 
 8. Acesse `http://localhost:5088` localmente ou `http://IP-DA-MAQUINA:5088` pela rede.
