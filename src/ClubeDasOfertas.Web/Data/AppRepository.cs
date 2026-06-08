@@ -438,14 +438,14 @@ VALUES (@id, @campaign_id, @original_file_name, @imported_by, @imported_at, @row
             await using var insert = new NpgsqlCommand("""
 INSERT INTO campaign_items (
     id, campaign_id, import_batch_id, source_row, source, original_vigency, description_tabloid,
-    normalized_description_tabloid, quantity_raw, quantity, unit, original_price_sale, original_price_club,
-    final_price_sale, final_price_club, description_solidus, barcode, code_type, risk_flags,
-    blocking_reasons, review_required, review_status, created_at, updated_at)
+    normalized_description_tabloid, quantity_raw, price_sale_raw, price_club_raw, quantity, unit,
+    original_price_sale, original_price_club, final_price_sale, final_price_club, description_solidus,
+    barcode, code_type, risk_flags, blocking_reasons, review_required, review_status, created_at, updated_at)
 VALUES (
     @id, @campaign_id, @import_batch_id, @source_row, @source, @original_vigency, @description_tabloid,
-    @normalized_description_tabloid, @quantity_raw, @quantity, @unit, @original_price_sale, @original_price_club,
-    @final_price_sale, @final_price_club, @description_solidus, @barcode, @code_type, @risk_flags,
-    @blocking_reasons, @review_required, @review_status, @created_at, @updated_at);
+    @normalized_description_tabloid, @quantity_raw, @price_sale_raw, @price_club_raw, @quantity, @unit,
+    @original_price_sale, @original_price_club, @final_price_sale, @final_price_club, @description_solidus,
+    @barcode, @code_type, @risk_flags, @blocking_reasons, @review_required, @review_status, @created_at, @updated_at);
 """, connection, transaction);
             AddCampaignItemParameters(insert, item);
             await insert.ExecuteNonQueryAsync(cancellationToken);
@@ -543,6 +543,8 @@ SET source_row = @source_row,
     description_tabloid = @description_tabloid,
     normalized_description_tabloid = @normalized_description_tabloid,
     quantity_raw = @quantity_raw,
+    price_sale_raw = @price_sale_raw,
+    price_club_raw = @price_club_raw,
     quantity = @quantity,
     unit = @unit,
     original_price_sale = @original_price_sale,
@@ -779,21 +781,23 @@ LIMIT 100;
             reader.GetString(6),
             reader.GetString(7),
             reader.GetString(8),
-            reader.GetDecimal(9),
+            reader.GetString(9),
             reader.GetString(10),
             reader.GetDecimal(11),
-            reader.GetDecimal(12),
+            reader.GetString(12),
             reader.GetDecimal(13),
             reader.GetDecimal(14),
-            reader.GetString(15),
-            reader.GetString(16),
+            reader.GetDecimal(15),
+            reader.GetDecimal(16),
             reader.GetString(17),
-            Unpack(reader.GetString(18)),
-            Unpack(reader.GetString(19)),
-            reader.GetBoolean(20),
-            reader.GetString(21),
-            reader.GetFieldValue<DateTimeOffset>(22),
-            reader.GetFieldValue<DateTimeOffset>(23));
+            reader.GetString(18),
+            reader.GetString(19),
+            Unpack(reader.GetString(20)),
+            Unpack(reader.GetString(21)),
+            reader.GetBoolean(22),
+            reader.GetString(23),
+            reader.GetFieldValue<DateTimeOffset>(24),
+            reader.GetFieldValue<DateTimeOffset>(25));
     }
 
     private static void AddCampaignItemParameters(NpgsqlCommand command, CampaignItem item)
@@ -807,6 +811,8 @@ LIMIT 100;
         command.Parameters.AddWithValue("@description_tabloid", item.DescriptionTabloid);
         command.Parameters.AddWithValue("@normalized_description_tabloid", item.NormalizedDescriptionTabloid);
         command.Parameters.AddWithValue("@quantity_raw", item.QuantityRaw);
+        command.Parameters.AddWithValue("@price_sale_raw", item.PriceSaleRaw);
+        command.Parameters.AddWithValue("@price_club_raw", item.PriceClubRaw);
         command.Parameters.AddWithValue("@quantity", item.Quantity);
         command.Parameters.AddWithValue("@unit", item.Unit);
         command.Parameters.AddWithValue("@original_price_sale", item.OriginalPriceSale);
@@ -838,9 +844,9 @@ LIMIT 100;
 
     private const string ItemSelectSql = """
 SELECT id, campaign_id, import_batch_id, source_row, source, original_vigency, description_tabloid,
-       normalized_description_tabloid, quantity_raw, quantity, unit, original_price_sale, original_price_club,
-       final_price_sale, final_price_club, description_solidus, barcode, code_type, risk_flags,
-       blocking_reasons, review_required, review_status, created_at, updated_at
+       normalized_description_tabloid, quantity_raw, price_sale_raw, price_club_raw, quantity, unit,
+       original_price_sale, original_price_club, final_price_sale, final_price_club, description_solidus,
+       barcode, code_type, risk_flags, blocking_reasons, review_required, review_status, created_at, updated_at
 FROM campaign_items
 """;
 }

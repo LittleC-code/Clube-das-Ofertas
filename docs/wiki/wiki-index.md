@@ -31,7 +31,7 @@ Catálogo de todas as páginas da wiki. Atualizado pelo agente a cada operação
 
 | Página | Resumo | Atualizado |
 |---|---|---|
-| [bugs-resolvidos.md](historico/bugs-resolvidos.md) | Registro de bugs corrigidos com causa raiz e solução | — |
+| [bugs-resolvidos.md](historico/bugs-resolvidos.md) | Registro de bugs corrigidos com causa raiz e solução | 2026-06-08 |
 | [decisoes-revertidas.md](historico/decisoes-revertidas.md) | Decisões técnicas ou de domínio que foram abandonadas e por quê | — |
 
 ---
@@ -40,7 +40,7 @@ Catálogo de todas as páginas da wiki. Atualizado pelo agente a cada operação
 
 | Página | Resumo | Atualizado |
 |---|---|---|
-| — | — | — |
+| [mojibake-codificacao.md](sintese/mojibake-codificacao.md) | Linha do tempo e causa da corrupção de acentuação em arquivos `.md` e `Program.cs` | 2026-06-08 |
 
 ---
 

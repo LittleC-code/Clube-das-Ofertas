@@ -91,6 +91,8 @@ public sealed record CampaignItem(
     string DescriptionTabloid,
     string NormalizedDescriptionTabloid,
     string QuantityRaw,
+    string PriceSaleRaw,
+    string PriceClubRaw,
     decimal Quantity,
     string Unit,
     decimal OriginalPriceSale,

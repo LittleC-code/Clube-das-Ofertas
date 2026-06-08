@@ -317,6 +317,7 @@ public static class HtmlView
     .item-edit-card {
       padding: 16px;
       border-top: 1px solid var(--line-soft);
+      background: #fbfcfe;
     }
     .item-edit-grid {
       display: grid;
@@ -343,6 +344,20 @@ public static class HtmlView
       border-radius: 6px;
       padding: 7px 12px;
       background: #fff;
+    }
+    .calc-preview {
+      padding: 10px 12px;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .calc-preview strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 13px;
     }
     .campaign-shell {
       display: grid;
@@ -549,6 +564,7 @@ public static class HtmlView
       font-size: 13px;
     }
     body.page-campaign header,
+    body.page-campaign .stat,
     body.page-campaign .panel,
     body.page-campaign .tablewrap,
     body.page-campaign .empty-state {
@@ -610,6 +626,9 @@ public static class HtmlView
       border-color: #2b2b2b;
       box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
     }
+    body.page-campaign .stat span {
+      color: #b8b8b8;
+    }
     body.page-campaign .menu-popover a:hover,
     body.page-campaign .menu-link:hover,
     body.page-campaign .ghost:hover,
@@ -642,6 +661,20 @@ public static class HtmlView
     }
     body.page-campaign td {
       border-bottom-color: #1f1f1f;
+    }
+    body.page-campaign .item-edit-row td,
+    body.page-campaign .item-edit-card {
+      background: #050505;
+      border-color: #2b2b2b;
+    }
+    body.page-campaign .item-edit-card .form-actions .secondary {
+      background: #141414;
+      color: #ffffff;
+      border-color: #ffffff;
+    }
+    body.page-campaign .item-edit-card .form-actions .secondary:hover {
+      background: #242424;
+      border-color: #ffffff;
     }
     body.page-campaign .notice {
       background: #101010;
@@ -691,8 +724,13 @@ public static class HtmlView
     }
     body.page-campaign .catalog-sidebar-section + .catalog-sidebar-section,
     body.page-campaign .catalog-item,
-    body.page-campaign .catalog-category {
+    body.page-campaign .catalog-category,
+    body.page-campaign .calc-preview {
       border-color: #2b2b2b;
+    }
+    body.page-campaign .calc-preview {
+      background: #050505;
+      color: #ffffff;
     }
     body.page-campaign .catalog-category:hover {
       background: #141414;
@@ -928,6 +966,281 @@ public static class HtmlView
         });
       });
 
+      const normalizeExpression = (value) =>
+        value
+          .replace(/[xX×]/g, '*')
+          .replace(/÷/g, '/');
+
+      const sanitizeQuantityExpression = (value) =>
+        normalizeExpression(stripQuantityWords(value).replace(/[^\d\s,.\-+*/()xX×÷]/g, ''));
+
+      const isQuantityLetter = (char) => /[A-Za-zÀ-ÿ]/.test(char);
+
+      const stripQuantityWords = (value) => {
+        const input = (value || '').trim();
+        let sanitized = '';
+        let currentWord = '';
+
+        const flushWord = () => {
+          if (!currentWord) {
+            return;
+          }
+
+          if (currentWord.length === 1 && (currentWord === 'x' || currentWord === 'X')) {
+            sanitized += currentWord;
+          } else {
+            sanitized += ' ';
+          }
+
+          currentWord = '';
+        };
+
+        for (const char of input) {
+          if (isQuantityLetter(char)) {
+            currentWord += char;
+            continue;
+          }
+
+          flushWord();
+          sanitized += char;
+        }
+
+        flushWord();
+        return sanitized;
+      };
+
+      const normalizeNumberToken = (token) => {
+        let sanitized = token.trim();
+        if (sanitized.includes(',')) {
+          sanitized = sanitized.replace(/\./g, '').replace(',', '.');
+        }
+
+        return sanitized;
+      };
+
+      const evaluateExpression = (value) => {
+        const input = normalizeExpression((value || '').trim());
+        let index = 0;
+
+        const skipWhitespace = () => {
+          while (index < input.length && /\s/.test(input[index])) {
+            index += 1;
+          }
+        };
+
+        const match = (expected) => {
+          if (input[index] !== expected) {
+            return false;
+          }
+
+          index += 1;
+          return true;
+        };
+
+        const parseNumber = () => {
+          skipWhitespace();
+          const start = index;
+          while (index < input.length && /[\d.,]/.test(input[index])) {
+            index += 1;
+          }
+
+          if (start === index) {
+            throw new Error('missing-number');
+          }
+
+          const parsed = Number.parseFloat(normalizeNumberToken(input.slice(start, index)));
+          if (!Number.isFinite(parsed)) {
+            throw new Error('invalid-number');
+          }
+
+          return parsed;
+        };
+
+        const parseFactor = () => {
+          skipWhitespace();
+          if (match('+')) {
+            return parseFactor();
+          }
+
+          if (match('-')) {
+            return -parseFactor();
+          }
+
+          if (match('(')) {
+            const valueInside = parseExpression();
+            skipWhitespace();
+            if (!match(')')) {
+              throw new Error('missing-closing-parenthesis');
+            }
+
+            return valueInside;
+          }
+
+          return parseNumber();
+        };
+
+        const parseTerm = () => {
+          let valueTerm = parseFactor();
+          while (true) {
+            skipWhitespace();
+            if (match('*')) {
+              valueTerm *= parseFactor();
+              continue;
+            }
+
+            if (match('/')) {
+              const divisor = parseFactor();
+              if (divisor === 0) {
+                throw new Error('division-by-zero');
+              }
+
+              valueTerm /= divisor;
+              continue;
+            }
+
+            return valueTerm;
+          }
+        };
+
+        const parseExpression = () => {
+          let valueExpression = parseTerm();
+          while (true) {
+            skipWhitespace();
+            if (match('+')) {
+              valueExpression += parseTerm();
+              continue;
+            }
+
+            if (match('-')) {
+              valueExpression -= parseTerm();
+              continue;
+            }
+
+            return valueExpression;
+          }
+        };
+
+        if (!input) {
+          return null;
+        }
+
+        const valueResult = parseExpression();
+        skipWhitespace();
+        if (index !== input.length) {
+          throw new Error('trailing-content');
+        }
+
+        return valueResult;
+      };
+
+      const inferQuantityUnit = (value, fallback) => {
+        const normalized = (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+        if (normalized.includes('KG')) {
+          return 'Kg';
+        }
+
+        if (normalized.includes('FARDO') || normalized.includes('FARDOS') || normalized.includes('FD')) {
+          return 'Fardos';
+        }
+
+        if (normalized.includes('CAIXA') || normalized.includes('CAIXAS') || normalized.includes('CX')) {
+          return 'Caixas';
+        }
+
+        return fallback || 'Unidades';
+      };
+
+      const moneyFormatter = new Intl.NumberFormat('pt-BR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+
+      const quantityFormatter = new Intl.NumberFormat('pt-BR', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 3
+      });
+
+      document.querySelectorAll('form[data-package-math-form]').forEach((form) => {
+        const quantityInput = form.querySelector('input[name="quantity_raw"]');
+        const saleInput = form.querySelector('input[name="price_sale"]');
+        const clubInput = form.querySelector('input[name="price_club"]');
+        const preview = form.querySelector('[data-calc-preview]');
+
+        if (!(quantityInput instanceof HTMLInputElement) ||
+            !(saleInput instanceof HTMLInputElement) ||
+            !(clubInput instanceof HTMLInputElement) ||
+            !(preview instanceof HTMLElement)) {
+          return;
+        }
+
+        const renderPreview = () => {
+          preview.hidden = false;
+          const quantityValue = quantityInput.value.trim();
+          const saleValue = saleInput.value.trim();
+          const clubValue = clubInput.value.trim();
+          const defaultPreviewHtml = `<strong>Preview da conta</strong><div>Digite a quantidade ou os preços para visualizar o resultado antes de salvar.</div>`;
+
+          if (!quantityValue && !saleValue && !clubValue) {
+            preview.innerHTML = defaultPreviewHtml;
+            return;
+          }
+
+          const lines = [];
+
+          try {
+            if (quantityValue) {
+              if (!/\d/.test(quantityValue)) {
+                const unit = inferQuantityUnit(quantityValue, quantityInput.dataset.previewUnit || 'Unidades');
+                lines.push(`Quantidade: 1 ${unit}`);
+              } else {
+                const quantityResult = evaluateExpression(sanitizeQuantityExpression(quantityValue));
+                if (quantityResult !== null) {
+                  const unit = inferQuantityUnit(quantityValue, quantityInput.dataset.previewUnit || 'Unidades');
+                  lines.push(`Quantidade: ${quantityFormatter.format(quantityResult)} ${unit}`);
+                }
+              }
+            }
+          } catch {
+            lines.push('Quantidade: conta invalida');
+          }
+
+          try {
+            if (saleValue) {
+              const saleResult = evaluateExpression(saleValue);
+              if (saleResult !== null) {
+                lines.push(`Preco venda: ${moneyFormatter.format(saleResult)}`);
+              }
+            }
+          } catch {
+            lines.push('Preco venda: conta invalida');
+          }
+
+          try {
+            if (clubValue) {
+              const clubResult = evaluateExpression(clubValue);
+              if (clubResult !== null) {
+                lines.push(`Preco clube: ${moneyFormatter.format(clubResult)}`);
+              }
+            }
+          } catch {
+            lines.push('Preco clube: conta invalida');
+          }
+
+          if (lines.length === 0) {
+            preview.innerHTML = defaultPreviewHtml;
+            return;
+          }
+
+          preview.hidden = false;
+          preview.innerHTML = `<strong>Preview da conta</strong>${lines.map((line) => `<div>${line}</div>`).join('')}`;
+        };
+
+        quantityInput.addEventListener('input', renderPreview);
+        saleInput.addEventListener('input', renderPreview);
+        clubInput.addEventListener('input', renderPreview);
+        renderPreview();
+      });
+
       document.addEventListener('click', (event) => {
         const toggle = event.target.closest('[data-edit-toggle]');
         if (toggle) {
@@ -938,6 +1251,7 @@ public static class HtmlView
 
           target.hidden = !target.hidden;
           if (!target.hidden) {
+            target.querySelector('input[name="quantity_raw"]')?.dispatchEvent(new Event('input', { bubbles: true }));
             target.querySelector('input, select, textarea, button')?.focus();
           }
           return;

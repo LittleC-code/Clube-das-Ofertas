@@ -219,6 +219,8 @@ CREATE TABLE IF NOT EXISTS campaign_items (
     description_tabloid text NOT NULL,
     normalized_description_tabloid text NOT NULL,
     quantity_raw text NOT NULL,
+    price_sale_raw text NOT NULL DEFAULT '',
+    price_club_raw text NOT NULL DEFAULT '',
     quantity numeric(12,3) NOT NULL,
     unit text NOT NULL,
     original_price_sale numeric(12,2) NOT NULL,
@@ -240,6 +242,12 @@ CREATE INDEX IF NOT EXISTS ix_campaign_items_campaign
     ON campaign_items (campaign_id);
 CREATE INDEX IF NOT EXISTS ix_campaign_items_barcode
     ON campaign_items (barcode);
+
+ALTER TABLE campaign_items
+    ADD COLUMN IF NOT EXISTS price_sale_raw text NOT NULL DEFAULT '';
+
+ALTER TABLE campaign_items
+    ADD COLUMN IF NOT EXISTS price_club_raw text NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS review_decisions (
     id uuid PRIMARY KEY,

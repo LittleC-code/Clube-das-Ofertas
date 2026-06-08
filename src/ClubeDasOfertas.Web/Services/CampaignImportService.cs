@@ -145,6 +145,8 @@ public sealed partial class CampaignImportService(
             row.DescriptionTabloid.Trim(),
             TextNormalizer.NormalizeKey(row.DescriptionTabloid),
             row.QuantityRaw.Trim(),
+            row.PriceSaleRaw.Trim(),
+            row.PriceClubRaw.Trim(),
             parsedQuantity.Quantity,
             unit,
             salePrice,

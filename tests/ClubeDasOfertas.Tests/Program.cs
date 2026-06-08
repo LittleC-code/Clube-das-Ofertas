@@ -10,12 +10,34 @@ Assert(File.Exists(workbookPath), "Planilha de exemplo deve existir no workspace
 
 Assert(Parsing.TryMoney(" R$        2,49 ", out var sale) && sale == 2.49m, "Parser deve ler moeda pt-BR.");
 Assert(Parsing.TryMoney("18,99", out var sale2) && sale2 == 18.99m, "Parser deve ler decimal com virgula.");
+Assert(Parsing.TryMoney("83,88/6", out var sale3) && sale3 == 13.98m, "Parser deve avaliar contas em campos de preco.");
 
 var quantityKg = Parsing.ParseQuantity("05Kg");
 Assert(quantityKg.IsValid && quantityKg.Quantity == 5m && quantityKg.Unit == "Kg", "Quantidade 05Kg deve virar 5 Kg.");
 
 var quantityUnits = Parsing.ParseQuantity("12 Unidades");
 Assert(quantityUnits.IsValid && quantityUnits.Quantity == 12m && quantityUnits.Unit == "Unidades", "Quantidade em unidades deve ser reconhecida.");
+
+var quantityExpression = Parsing.ParseQuantity("20*6 Unidades");
+Assert(quantityExpression.IsValid && quantityExpression.Quantity == 120m && quantityExpression.Unit == "Unidades", "Quantidade deve aceitar contas na edicao manual.");
+
+var quantityExpressionWithX = Parsing.ParseQuantity("20x6 Unidades");
+Assert(quantityExpressionWithX.IsValid && quantityExpressionWithX.Quantity == 120m && quantityExpressionWithX.Unit == "Unidades", "Quantidade deve aceitar contas com x na edicao manual.");
+
+var quantityExpressionWithUnitBetween = Parsing.ParseQuantity("20 Unidades / 6");
+Assert(quantityExpressionWithUnitBetween.IsValid && Math.Round(quantityExpressionWithUnitBetween.Quantity, 3) == 3.333m && quantityExpressionWithUnitBetween.Unit == "Unidades", "Quantidade deve aceitar divisao mesmo com a unidade escrita no meio da conta.");
+
+var quantityExpressionWithCaixas = Parsing.ParseQuantity("120 caixas / 6");
+Assert(quantityExpressionWithCaixas.IsValid && quantityExpressionWithCaixas.Quantity == 20m && quantityExpressionWithCaixas.Unit == "Caixas", "Quantidade deve aceitar caixas no meio da conta.");
+
+var quantityExpressionWithFardos = Parsing.ParseQuantity("120 fardos / 6");
+Assert(quantityExpressionWithFardos.IsValid && quantityExpressionWithFardos.Quantity == 20m && quantityExpressionWithFardos.Unit == "Fardos", "Quantidade deve aceitar fardos no meio da conta.");
+
+var quantityOnlyBoxes = Parsing.ParseQuantity("Caixas");
+Assert(quantityOnlyBoxes.IsValid && quantityOnlyBoxes.Quantity == 1m && quantityOnlyBoxes.Unit == "Caixas", "Quantidade deve aceitar texto puro como Caixas.");
+
+var quantityOnlyBales = Parsing.ParseQuantity("Fardos");
+Assert(quantityOnlyBales.IsValid && quantityOnlyBales.Quantity == 1m && quantityOnlyBales.Unit == "Fardos", "Quantidade deve aceitar texto puro como Fardos.");
 
 Assert(TextNormalizer.NormalizeKey("Descri\u00E7\u00E3o Solidus") == "DESCRICAO SOLIDUS", "Normalizacao deve remover acentos.");
 Assert(Parsing.CodeType("99738") == "Codigo Unificado", "Codigo curto deve ser classificado como Codigo Unificado.");
@@ -91,7 +113,19 @@ var packageItem = CampaignImportService.EvaluateItem(
 Assert(packageItem.RiskFlags.Contains("FARDO_CAIXA"), "Fardo/caixa deve ser detectado.");
 Assert(packageItem.RiskFlags.Contains("FARDO"), "Fardo deve receber flag especifica.");
 Assert(packageItem.BlockingReasons.Contains("Fardo pendente"), "Fardo deve bloquear exportacao ate revisao.");
+Assert(packageItem.PriceSaleRaw == "41,94" && packageItem.PriceClubRaw == "35,94", "Edicao deve preservar os precos originais informados.");
 Assert(packageItem.FinalPriceSale == 83.88m && packageItem.FinalPriceClub == 71.88m, "Fardo deve poder aplicar multiplicador proprio.");
+
+var packageItemWithMath = CampaignImportService.EvaluateItem(
+    Guid.NewGuid(),
+    Guid.NewGuid(),
+    new RawCampaignRow(41, "App", "VIGENCIA 05 A 08", "Cerveja Long Neck 330ml", "20*6 Unidades", "83,88/6", "71,88/6"),
+    NewCatalog("Cerveja Long Neck 330ml", "CERV LONG NECK FD C/6", "7891991304887"),
+    [fardoRule]);
+
+Assert(packageItemWithMath.Quantity == 120m && packageItemWithMath.Unit == "Unidades", "Fardo deve aceitar conta no campo de quantidade.");
+Assert(packageItemWithMath.PriceSaleRaw == "83,88/6" && packageItemWithMath.PriceClubRaw == "71,88/6", "Edicao deve preservar a expressao da conta dos precos.");
+Assert(packageItemWithMath.FinalPriceSale == 27.96m && packageItemWithMath.FinalPriceClub == 23.96m, "Fardo deve reaplicar a regra depois de calcular os precos informados.");
 
 var caixaItem = CampaignImportService.EvaluateItem(
     Guid.NewGuid(),
