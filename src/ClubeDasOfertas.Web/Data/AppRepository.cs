@@ -239,6 +239,28 @@ ORDER BY description_solidus;
         return entries;
     }
 
+    public async Task<ProductCatalogEntry?> GetCatalogEntryByBarcodeAsync(string barcode, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(barcode))
+        {
+            return null;
+        }
+
+        await using var connection = await db.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+SELECT id, description_tabloid, normalized_description_tabloid, category, description_solidus,
+       normalized_description_solidus, barcode, code_type, created_at, updated_at
+FROM product_catalog_entries
+WHERE barcode = @barcode
+ORDER BY updated_at DESC, created_at DESC
+LIMIT 1;
+""", connection);
+        command.Parameters.AddWithValue("@barcode", barcode.Trim());
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadCatalog(reader) : null;
+    }
+
     public async Task<int> UpsertCatalogAsync(IReadOnlyList<CatalogImportRow> rows, CancellationToken cancellationToken = default)
     {
         var count = 0;
@@ -292,7 +314,7 @@ DO UPDATE SET
         var rules = new List<ConversionRule>();
         await using var connection = await db.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
-SELECT id, name, rule_type, pattern, multiplier, target_unit, category_scope, requires_review, is_active, created_at, updated_at
+SELECT id, name, rule_type, pattern_input, pattern, multiplier, target_unit, category_scope, requires_review, is_active, created_at, updated_at
 FROM conversion_rules
 ORDER BY rule_type, name;
 """, connection);
@@ -310,7 +332,7 @@ ORDER BY rule_type, name;
     {
         await using var connection = await db.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
-SELECT id, name, rule_type, pattern, multiplier, target_unit, category_scope, requires_review, is_active, created_at, updated_at
+SELECT id, name, rule_type, pattern_input, pattern, multiplier, target_unit, category_scope, requires_review, is_active, created_at, updated_at
 FROM conversion_rules
 WHERE id = @id
 LIMIT 1;
@@ -331,13 +353,14 @@ LIMIT 1;
         await using var connection = await db.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
 INSERT INTO conversion_rules
-    (id, name, rule_type, pattern, multiplier, target_unit, category_scope, requires_review, is_active, created_at, updated_at)
+    (id, name, rule_type, pattern_input, pattern, multiplier, target_unit, category_scope, requires_review, is_active, created_at, updated_at)
 VALUES
-    (@id, @name, @rule_type, @pattern, @multiplier, @target_unit, @category_scope, @requires_review, @is_active, @created_at, @updated_at);
+    (@id, @name, @rule_type, @pattern_input, @pattern, @multiplier, @target_unit, @category_scope, @requires_review, @is_active, @created_at, @updated_at);
 """, connection);
         command.Parameters.AddWithValue("@id", rule.Id);
         command.Parameters.AddWithValue("@name", rule.Name);
         command.Parameters.AddWithValue("@rule_type", rule.RuleType);
+        command.Parameters.AddWithValue("@pattern_input", rule.PatternInput);
         command.Parameters.AddWithValue("@pattern", rule.Pattern);
         command.Parameters.AddWithValue("@multiplier", rule.Multiplier);
         command.Parameters.AddWithValue("@target_unit", rule.TargetUnit);
@@ -356,6 +379,7 @@ VALUES
 UPDATE conversion_rules
 SET name = @name,
     rule_type = @rule_type,
+    pattern_input = @pattern_input,
     pattern = @pattern,
     multiplier = @multiplier,
     target_unit = @target_unit,
@@ -368,6 +392,7 @@ WHERE id = @id;
         command.Parameters.AddWithValue("@id", rule.Id);
         command.Parameters.AddWithValue("@name", rule.Name);
         command.Parameters.AddWithValue("@rule_type", rule.RuleType);
+        command.Parameters.AddWithValue("@pattern_input", rule.PatternInput);
         command.Parameters.AddWithValue("@pattern", rule.Pattern);
         command.Parameters.AddWithValue("@multiplier", rule.Multiplier);
         command.Parameters.AddWithValue("@target_unit", rule.TargetUnit);
@@ -402,6 +427,17 @@ WHERE id = @id;
 """, connection);
         command.Parameters.AddWithValue("@id", id);
         command.Parameters.AddWithValue("@updated_at", DateTimeOffset.UtcNow);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task DeleteRuleAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await db.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+DELETE FROM conversion_rules
+WHERE id = @id;
+""", connection);
+        command.Parameters.AddWithValue("@id", id);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -760,13 +796,14 @@ LIMIT 100;
             reader.GetString(1),
             reader.GetString(2),
             reader.GetString(3),
-            reader.GetDecimal(4),
-            reader.GetString(5),
+            reader.GetString(4),
+            reader.GetDecimal(5),
             reader.GetString(6),
-            reader.GetBoolean(7),
+            reader.GetString(7),
             reader.GetBoolean(8),
-            reader.GetFieldValue<DateTimeOffset>(9),
-            reader.GetFieldValue<DateTimeOffset>(10));
+            reader.GetBoolean(9),
+            reader.GetFieldValue<DateTimeOffset>(10),
+            reader.GetFieldValue<DateTimeOffset>(11));
     }
 
     private static CampaignItem ReadCampaignItem(NpgsqlDataReader reader)

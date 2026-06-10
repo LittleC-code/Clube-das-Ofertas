@@ -72,12 +72,14 @@ public sealed partial class CampaignImportService(
             blockers.Add("Quantidade invalida");
         }
 
+        var normalizedTabloid = TextNormalizer.NormalizeKey(row.DescriptionTabloid);
+        var normalizedSolidus = TextNormalizer.NormalizeKey(catalogEntry?.DescriptionSolidus ?? "");
         var combinedText = TextNormalizer.NormalizeKey($"{row.DescriptionTabloid} {catalogEntry?.DescriptionSolidus ?? ""}");
         var category = catalogEntry?.Category ?? "";
-        var weightedRule = rules.FirstOrDefault(x => x.RuleType == RuleTypes.Weighted && RuleApplies(x, combinedText, category));
-        var fardoRule = rules.FirstOrDefault(x => x.RuleType == RuleTypes.PackageBale && RuleApplies(x, combinedText, category));
-        var caixaRule = rules.FirstOrDefault(x => x.RuleType == RuleTypes.PackageBox && RuleApplies(x, combinedText, category));
-        var legacyPackageRule = rules.FirstOrDefault(x => x.RuleType == RuleTypes.Package && RuleApplies(x, combinedText, category));
+        var weightedRule = rules.FirstOrDefault(x => x.RuleType == RuleTypes.Weighted && RuleApplies(x, normalizedTabloid, normalizedSolidus, combinedText, category));
+        var fardoRule = rules.FirstOrDefault(x => x.RuleType == RuleTypes.PackageBale && RuleApplies(x, normalizedTabloid, normalizedSolidus, combinedText, category));
+        var caixaRule = rules.FirstOrDefault(x => x.RuleType == RuleTypes.PackageBox && RuleApplies(x, normalizedTabloid, normalizedSolidus, combinedText, category));
+        var legacyPackageRule = rules.FirstOrDefault(x => x.RuleType == RuleTypes.Package && RuleApplies(x, normalizedTabloid, normalizedSolidus, combinedText, category));
         var packageRule = fardoRule ?? caixaRule ?? legacyPackageRule;
 
         var finalSale = salePrice;
@@ -202,9 +204,9 @@ public sealed partial class CampaignImportService(
             .ToList();
     }
 
-    private static bool RuleApplies(ConversionRule rule, string normalizedText, string category)
+    private static bool RuleApplies(ConversionRule rule, string normalizedTabloid, string normalizedSolidus, string normalizedCombinedText, string category)
     {
-        return RuleMatches(rule, normalizedText) && RuleCategoryMatches(rule, category);
+        return RuleMatches(rule, SelectMatchText(rule, normalizedTabloid, normalizedSolidus, normalizedCombinedText)) && RuleCategoryMatches(rule, category);
     }
 
     private static bool RuleMatches(ConversionRule rule, string normalizedText)
@@ -236,6 +238,16 @@ public sealed partial class CampaignImportService(
             .Split([',', ';', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(TextNormalizer.NormalizeKey)
             .Any(scope => scope == normalizedCategory);
+    }
+
+    private static string SelectMatchText(ConversionRule rule, string normalizedTabloid, string normalizedSolidus, string normalizedCombinedText)
+    {
+        return RulePatternConverter.ResolveMatchField(rule) switch
+        {
+            RuleMatchField.Solidus => normalizedSolidus,
+            RuleMatchField.Tabloid => normalizedTabloid,
+            _ => normalizedCombinedText
+        };
     }
 
     [GeneratedRegex(@"(100\s*G|CADA\s*100\s*G)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]

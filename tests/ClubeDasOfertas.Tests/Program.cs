@@ -49,6 +49,27 @@ var weightedRule = NewRule("Pesaveis", RuleTypes.Weighted, @"\b(ALHO|MUSSARELA|1
 var fardoRule = NewRule("Fardos", RuleTypes.PackageBale, @"\b(FD|FARDO|FARDOS)\b", 2m, "Unidades", true);
 var caixaRule = NewRule("Caixas perfumaria", RuleTypes.PackageBox, @"\b(CX/?\d+|C/?\d+|C\s+\d+|CAIXA|CAIXAS)\b", 3m, "Unidades", true, "Perfumaria");
 
+var friendlyRule = RulePatternConverter.Convert("fardo ou caixa");
+Assert(friendlyRule.Pattern == @"(?: (?<!\w)FARDO(?!\w)|(?<!\w)CAIXA(?!\w))".Replace(" ", ""), "Conversor deve transformar alternativas escritas pelo usuario em regex.");
+
+var pipeSeparatedRule = RulePatternConverter.Convert("fardo | caixa");
+Assert(pipeSeparatedRule.Pattern == friendlyRule.Pattern, "Separador com pipe deve continuar no fluxo amigavel, sem virar regex bruto.");
+
+var commaSeparatedRule = RulePatternConverter.Convert("fardo, caixa");
+Assert(commaSeparatedRule.Pattern == friendlyRule.Pattern, "Separador com virgula deve gerar as mesmas alternativas amigaveis.");
+
+var slashSeparatedWordsRule = RulePatternConverter.Convert("fd/fardo");
+Assert(slashSeparatedWordsRule.Pattern == @"(?: (?<!\w)FD(?!\w)|(?<!\w)FARDO(?!\w))".Replace(" ", ""), "Barra entre palavras deve ser entendida como alternativa amigavel.");
+
+var wildcardRule = RulePatternConverter.Convert("cx/*");
+Assert(wildcardRule.Pattern == @"(?<!\w)CX\s*/\s*.*(?!\w)", "Conversor deve respeitar coringa e separadores comuns.");
+
+var regexLiteralRule = RulePatternConverter.Convert(@"\b(FD|FARDO)\b");
+Assert(regexLiteralRule.IsRegexLiteral && regexLiteralRule.Pattern == @"\b(FD|FARDO)\b", "Regex literal informado pelo usuario deve ser preservado.");
+
+var semanticSolidusRule = RulePatternConverter.Convert("Se conter a palavra CERV na descrição solidus, aplicar a regra");
+Assert(semanticSolidusRule.Pattern == @"(?<!\w)CERV(?!\w)", "Frase semantica para Solidus deve extrair apenas o criterio util.");
+
 await using (var stream = File.OpenRead(workbookPath))
 {
     var file = new FormFile(stream, 0, stream.Length, "file", Path.GetFileName(workbookPath));
@@ -125,6 +146,26 @@ Assert(packageItem.RiskFlags.Contains("FARDO"), "Fardo deve receber flag especif
 Assert(packageItem.BlockingReasons.Contains("Fardo pendente"), "Fardo deve bloquear exportacao ate revisao.");
 Assert(packageItem.PriceSaleRaw == "41,94" && packageItem.PriceClubRaw == "35,94", "Edicao deve preservar os precos originais informados.");
 Assert(packageItem.FinalPriceSale == 83.88m && packageItem.FinalPriceClub == 71.88m, "Fardo deve poder aplicar multiplicador proprio.");
+
+var semanticSolidusConversionRule = NewRule(
+    "Cervejas no solidus",
+    RuleTypes.PackageBale,
+    semanticSolidusRule.Pattern,
+    2m,
+    "Unidades",
+    true,
+    patternInput: "Se conter a palavra CERV na descrição solidus, aplicar a regra");
+
+var semanticSolidusItem = CampaignImportService.EvaluateItem(
+    Guid.NewGuid(),
+    Guid.NewGuid(),
+    new RawCampaignRow(42, "App", "VIGENCIA 05 A 08", "Produto generico", "10 Unidades", "10,00", "8,00"),
+    NewCatalog("Produto generico", "CERV LONG NECK FD C/6", "7891991304887"),
+    [semanticSolidusConversionRule]);
+
+Assert(semanticSolidusItem.RiskFlags.Contains("FARDO_CAIXA"), "Regra semantica apontando para Solidus deve casar quando o texto estiver apenas na descricao Solidus.");
+Assert(semanticSolidusItem.BlockingReasons.Contains("Fardo pendente"), "Regra semantica para Solidus deve acionar revisao quando configurada para isso.");
+Assert(semanticSolidusItem.FinalPriceSale == 20.00m && semanticSolidusItem.FinalPriceClub == 16.00m, "Regra semantica para Solidus deve aplicar o multiplicador configurado.");
 
 var packageItemWithMath = CampaignImportService.EvaluateItem(
     Guid.NewGuid(),
@@ -257,10 +298,10 @@ static string FindRepoRoot(string start)
     throw new DirectoryNotFoundException("Nao encontrei a raiz do repositorio.");
 }
 
-static ConversionRule NewRule(string name, string type, string pattern, decimal multiplier, string targetUnit, bool requiresReview, string categoryScope = "")
+static ConversionRule NewRule(string name, string type, string pattern, decimal multiplier, string targetUnit, bool requiresReview, string categoryScope = "", string? patternInput = null)
 {
     var now = DateTimeOffset.UtcNow;
-    return new ConversionRule(Guid.NewGuid(), name, type, pattern, multiplier, targetUnit, categoryScope, requiresReview, true, now, now);
+    return new ConversionRule(Guid.NewGuid(), name, type, patternInput ?? pattern, pattern, multiplier, targetUnit, categoryScope, requiresReview, true, now, now);
 }
 
 static ProductCatalogEntry NewCatalog(string descriptionTabloid, string descriptionSolidus, string barcode, string category = "Categoria")

@@ -370,7 +370,7 @@ app.MapPost("/campaigns/{id:guid}/delete", async (Guid id, HttpContext context, 
     return RedirectWithNotice("/campaigns", "Campanha excluída.");
 }).RequireAuthorization();
 
-app.MapGet("/campaigns/{id:guid}", async (Guid id, string? filter, HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
+app.MapGet("/campaigns/{id:guid}", async (Guid id, string? filter, string? q, HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
     var antiForgeryField = AntiForgeryField(antiforgery, context);
     var campaign = await repository.GetCampaignAsync(id, cancellationToken);
@@ -381,8 +381,8 @@ app.MapGet("/campaigns/{id:guid}", async (Guid id, string? filter, HttpContext c
 
     var stats = await repository.GetCampaignStatsAsync(id, cancellationToken);
     var items = await repository.GetCampaignItemsAsync(id, cancellationToken);
-    var visibleItems = ApplyFilter(items, filter).ToList();
-    var body = RenderCampaignDetails(campaign, stats, visibleItems, filter ?? "todos", antiForgeryField);
+    var visibleItems = ApplyCampaignSearch(ApplyFilter(items, filter), q).ToList();
+    var body = RenderCampaignDetails(campaign, stats, visibleItems, filter ?? "todos", q ?? "", antiForgeryField);
     return HtmlView.Page(campaign.Name, context.User, body, Notice(context.Request), antiForgeryField, pageClass: "page-campaign", headerTitle: "Campanhas");
 }).RequireAuthorization();
 
@@ -496,8 +496,9 @@ app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/approve", async (G
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
     var form = await context.Request.ReadFormAsync(cancellationToken);
     var filter = form["filter"].ToString();
+    var query = form["q"].ToString();
     await reviewService.ApproveAsync(itemId, currentUser, form["comment"].ToString(), cancellationToken);
-    return await CampaignMutationResultAsync(campaignId, filter, "Item confirmado.", context, repository, antiforgery, cancellationToken);
+    return await CampaignMutationResultAsync(campaignId, filter, query, "Item confirmado.", context, repository, antiforgery, cancellationToken);
 }).RequireAuthorization();
 
 app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/reject", async (Guid campaignId, Guid itemId, HttpContext context, AppRepository repository, ReviewService reviewService, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
@@ -506,8 +507,9 @@ app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/reject", async (Gu
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
     var form = await context.Request.ReadFormAsync(cancellationToken);
     var filter = form["filter"].ToString();
+    var query = form["q"].ToString();
     await reviewService.RejectAsync(itemId, currentUser, form["comment"].ToString(), cancellationToken);
-    return await CampaignMutationResultAsync(campaignId, filter, "Item rejeitado e mantido bloqueado.", context, repository, antiforgery, cancellationToken);
+    return await CampaignMutationResultAsync(campaignId, filter, query, "Item rejeitado e mantido bloqueado.", context, repository, antiforgery, cancellationToken);
 }).RequireAuthorization();
 
 app.MapPost("/campaigns/{campaignId:guid}/items/approve-all", async (Guid campaignId, HttpContext context, AppRepository repository, ReviewService reviewService, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
@@ -516,25 +518,26 @@ app.MapPost("/campaigns/{campaignId:guid}/items/approve-all", async (Guid campai
     var campaign = await repository.GetCampaignAsync(campaignId, cancellationToken);
     if (campaign is null)
     {
-        return CampaignMutationError(campaignId, "", "Campanha não encontrada.", context, 404);
+        return CampaignMutationError(campaignId, "", "", "Campanha não encontrada.", context, 404);
     }
 
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
     var form = await context.Request.ReadFormAsync(cancellationToken);
     var filter = form["filter"].ToString();
+    var query = form["q"].ToString();
     var items = await repository.GetCampaignItemsAsync(campaignId, cancellationToken);
-    var itemIds = ApplyFilter(items, filter)
+    var itemIds = ApplyCampaignSearch(ApplyFilter(items, filter), query)
         .Where(IsReviewableItem)
         .Select(x => x.Id)
         .ToList();
 
     if (itemIds.Count == 0)
     {
-        return CampaignMutationError(campaignId, filter, "Não há itens revisáveis nesse filtro.", context);
+        return CampaignMutationError(campaignId, filter, query, "Não há itens revisáveis nesse filtro.", context);
     }
 
     var approved = await reviewService.ApproveManyAsync(itemIds, currentUser, form["comment"].ToString(), cancellationToken);
-    return await CampaignMutationResultAsync(campaignId, filter, approved == 1 ? "1 item confirmado." : $"{approved} itens confirmados.", context, repository, antiforgery, cancellationToken);
+    return await CampaignMutationResultAsync(campaignId, filter, query, approved == 1 ? "1 item confirmado." : $"{approved} itens confirmados.", context, repository, antiforgery, cancellationToken);
 }).RequireAuthorization();
 
 app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/save", async (Guid campaignId, Guid itemId, HttpContext context, AppRepository repository, CampaignItemEditorService editorService, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
@@ -543,12 +546,13 @@ app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/save", async (Guid
     var campaign = await repository.GetCampaignAsync(campaignId, cancellationToken);
     if (campaign is null)
     {
-        return CampaignMutationError(campaignId, "", "Campanha não encontrada.", context, 404);
+        return CampaignMutationError(campaignId, "", "", "Campanha não encontrada.", context, 404);
     }
 
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
     var form = await context.Request.ReadFormAsync(cancellationToken);
     var filter = form["filter"].ToString();
+    var query = form["q"].ToString();
 
     try
     {
@@ -564,11 +568,11 @@ app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/save", async (Guid
             currentUser,
             cancellationToken);
 
-        return await CampaignMutationResultAsync(campaignId, filter, "Item atualizado.", context, repository, antiforgery, cancellationToken);
+        return await CampaignMutationResultAsync(campaignId, filter, query, "Item atualizado.", context, repository, antiforgery, cancellationToken);
     }
     catch (InvalidOperationException ex)
     {
-        return CampaignMutationError(campaignId, filter, ex.Message, context);
+        return CampaignMutationError(campaignId, filter, query, ex.Message, context);
     }
 }).RequireAuthorization();
 
@@ -654,15 +658,15 @@ app.MapPost("/rules", async (HttpContext context, AppRepository repository, IAnt
     var form = await context.Request.ReadFormAsync(cancellationToken);
     var name = form["name"].ToString();
     var type = form["rule_type"].ToString();
-    var pattern = form["pattern"].ToString();
+    var patternInput = form["pattern_input"].ToString();
     var multiplierText = form["multiplier"].ToString();
     var targetUnit = form["target_unit"].ToString();
     var categoryScope = form["category_scope"].ToString();
     var requiresReview = form["requires_review"] == "on";
 
-    if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(pattern))
+    if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(patternInput))
     {
-        return RedirectWithNotice("/rules", "Nome, tipo e padrão são obrigatórios.");
+        return RedirectWithNotice("/rules", "Nome, tipo e como a regra deve acontecer são obrigatórios.");
     }
 
     if (!Parsing.TryMoney(multiplierText, out var multiplier) || multiplier <= 0m)
@@ -670,8 +674,18 @@ app.MapPost("/rules", async (HttpContext context, AppRepository repository, IAnt
         multiplier = 1m;
     }
 
+    RulePatternConversion conversion;
+    try
+    {
+        conversion = RulePatternConverter.Convert(patternInput);
+    }
+    catch (ArgumentException ex)
+    {
+        return RedirectWithNotice("/rules", ex.Message);
+    }
+
     var now = DateTimeOffset.UtcNow;
-    var rule = new ConversionRule(Guid.NewGuid(), name, type, pattern, multiplier, targetUnit, categoryScope, requiresReview, true, now, now);
+    var rule = new ConversionRule(Guid.NewGuid(), name, type, conversion.PatternInput, conversion.Pattern, multiplier, targetUnit, categoryScope, requiresReview, true, now, now);
     await repository.AddRuleAsync(rule, cancellationToken);
     await repository.AddAuditAsync(currentUser.Id, currentUser.Email, "Criou regra", "ConversionRule", rule.Id, rule.Name, cancellationToken);
     return RedirectWithNotice("/rules", "Regra criada.");
@@ -690,15 +704,15 @@ app.MapPost("/rules/{id:guid}/save", async (Guid id, HttpContext context, AppRep
     var form = await context.Request.ReadFormAsync(cancellationToken);
     var name = form["name"].ToString();
     var type = form["rule_type"].ToString();
-    var pattern = form["pattern"].ToString();
+    var patternInput = form["pattern_input"].ToString();
     var multiplierText = form["multiplier"].ToString();
     var targetUnit = form["target_unit"].ToString();
     var categoryScope = form["category_scope"].ToString();
     var requiresReview = form["requires_review"] == "on";
 
-    if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(pattern))
+    if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(patternInput))
     {
-        return RedirectWithNotice("/rules", "Nome, tipo e padrão são obrigatórios.");
+        return RedirectWithNotice("/rules", "Nome, tipo e como a regra deve acontecer são obrigatórios.");
     }
 
     if (!Parsing.TryMoney(multiplierText, out var multiplier) || multiplier <= 0m)
@@ -706,12 +720,23 @@ app.MapPost("/rules/{id:guid}/save", async (Guid id, HttpContext context, AppRep
         multiplier = 1m;
     }
 
+    RulePatternConversion conversion;
+    try
+    {
+        conversion = RulePatternConverter.Convert(patternInput);
+    }
+    catch (ArgumentException ex)
+    {
+        return RedirectWithNotice("/rules", ex.Message);
+    }
+
     var now = DateTimeOffset.UtcNow;
     var updatedRule = existingRule with
     {
         Name = name,
         RuleType = type,
-        Pattern = pattern,
+        PatternInput = conversion.PatternInput,
+        Pattern = conversion.Pattern,
         Multiplier = multiplier,
         TargetUnit = targetUnit,
         CategoryScope = categoryScope,
@@ -732,6 +757,21 @@ app.MapPost("/rules/{id:guid}/toggle", async (Guid id, HttpContext context, AppR
     await repository.ToggleRuleAsync(id, cancellationToken);
     await repository.AddAuditAsync(currentUser.Id, currentUser.Email, "Alternou regra", "ConversionRule", id, "Ativar/desativar", cancellationToken);
     return RedirectWithNotice("/rules", "Status da regra atualizado.");
+}).RequireAuthorization("AdminOnly");
+
+app.MapPost("/rules/{id:guid}/delete", async (Guid id, HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
+{
+    await antiforgery.ValidateRequestAsync(context);
+    var rule = await repository.GetRuleAsync(id, cancellationToken);
+    if (rule is null)
+    {
+        return RedirectWithNotice("/rules", "Regra não encontrada.");
+    }
+
+    var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
+    await repository.DeleteRuleAsync(id, cancellationToken);
+    await repository.AddAuditAsync(currentUser.Id, currentUser.Email, "Excluiu regra", "ConversionRule", id, rule.Name, cancellationToken);
+    return RedirectWithNotice("/rules", "Regra excluída.");
 }).RequireAuthorization("AdminOnly");
 
 app.MapGet("/history", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
@@ -867,10 +907,12 @@ static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, Campaign
     return body.ToString();
 }
 
-static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IReadOnlyList<CampaignItem> items, string filter, string antiForgeryField)
+static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IReadOnlyList<CampaignItem> items, string filter, string query, string antiForgeryField)
 {
     var normalizedFilter = NormalizeFilter(filter);
+    var normalizedQuery = (query ?? "").Trim();
     var filterField = $"""<input type="hidden" name="filter" value="{HtmlView.E(normalizedFilter)}">""";
+    var queryField = $"""<input type="hidden" name="q" value="{HtmlView.E(normalizedQuery)}">""";
     var visibleReviewableItems = items.Count(IsReviewableItem);
     var exportWarning = stats.BlockingItems > 0
         ? $"""<div class="toolbar-note">{HtmlView.Badge($"{CountLabel(stats.BlockingItems, "item", "itens")} com pendências serão exportados com riscos e pendências no CSV.", "danger")}</div>"""
@@ -892,6 +934,7 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
 <form method="post" action="/campaigns/{campaign.Id}/items/approve-all" class="async-campaign-form">
   {antiForgeryField}
   {filterField}
+  {queryField}
   <input type="hidden" name="comment" value="">
   <button class="secondary" type="submit" data-busy-label="Confirmando...">Confirmar todos os itens visíveis</button>
 </form>
@@ -910,18 +953,27 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
       <p class="panel-subtitle">Corrija descrição, código de barras, quantidade e preço diretamente aqui quando precisar ajustar um item antes da exportação.</p>
     </div>
   </div>
-  <div class="toolbar">{exportButton}{approveAllButton}</div>
+  <div class="toolbar campaign-toolbar">
+    <form method="get" action="/campaigns/{campaign.Id}" class="campaign-search-form">
+      <input type="hidden" name="filter" value="{HtmlView.E(normalizedFilter)}">
+      <input name="q" value="{HtmlView.E(normalizedQuery)}" placeholder="Buscar por descrição, Solidus, código ou fonte">
+      <button class="secondary" type="submit">Buscar</button>
+      <a class="button secondary" href="{BuildCampaignPath(campaign.Id, normalizedFilter)}">Limpar</a>
+    </form>
+    {exportButton}
+    {approveAllButton}
+  </div>
   {exportWarning}
 </section>
 <div class="toolbar">
-  <a class="{FilterButtonClass("", normalizedFilter)}" href="/campaigns/{campaign.Id}">Todos</a>
-  <a class="{FilterButtonClass("bloqueado", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=bloqueado">Bloqueados</a>
-  <a class="{FilterButtonClass("pendente", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=pendente">Revisão</a>
-  <a class="{FilterButtonClass("sem-codigo", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=sem-codigo">Sem código</a>
-  <a class="{FilterButtonClass("pesavel", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=pesavel">Pesáveis</a>
-  <a class="{FilterButtonClass("fardo", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=fardo">Fardos/caixas</a>
-  <a class="{FilterButtonClass("duplicado", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=duplicado">Duplicidade</a>
-  <span class="muted">Filtro atual: {HtmlView.E(DisplayFilter(normalizedFilter))}</span>
+  <a class="{FilterButtonClass("", normalizedFilter)}" href="{BuildCampaignPath(campaign.Id, "", normalizedQuery)}">Todos</a>
+  <a class="{FilterButtonClass("bloqueado", normalizedFilter)}" href="{BuildCampaignPath(campaign.Id, "bloqueado", normalizedQuery)}">Bloqueados</a>
+  <a class="{FilterButtonClass("pendente", normalizedFilter)}" href="{BuildCampaignPath(campaign.Id, "pendente", normalizedQuery)}">Revisão</a>
+  <a class="{FilterButtonClass("sem-codigo", normalizedFilter)}" href="{BuildCampaignPath(campaign.Id, "sem-codigo", normalizedQuery)}">Sem código</a>
+  <a class="{FilterButtonClass("pesavel", normalizedFilter)}" href="{BuildCampaignPath(campaign.Id, "pesavel", normalizedQuery)}">Pesáveis</a>
+  <a class="{FilterButtonClass("fardo", normalizedFilter)}" href="{BuildCampaignPath(campaign.Id, "fardo", normalizedQuery)}">Fardos/caixas</a>
+  <a class="{FilterButtonClass("duplicado", normalizedFilter)}" href="{BuildCampaignPath(campaign.Id, "duplicado", normalizedQuery)}">Duplicidade</a>
+  <span class="muted">Filtro atual: {HtmlView.E(DisplayFilter(normalizedFilter))}{(string.IsNullOrWhiteSpace(normalizedQuery) ? "" : $" · Busca: {HtmlView.E(normalizedQuery)}")}</span>
 </div>
 <div class="tablewrap" data-campaign-detail>
 <table>
@@ -933,7 +985,7 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
   </thead>
   <tbody id="campaign-items-body">
 """);
-    body.Append(RenderCampaignItemsTableBody(campaign, items, normalizedFilter, antiForgeryField));
+    body.Append(RenderCampaignItemsTableBody(campaign, items, normalizedFilter, normalizedQuery, antiForgeryField));
     body.AppendLine("""
   </tbody>
 </table>
@@ -1041,7 +1093,7 @@ static string RenderCampaignStats(CampaignStats stats)
 """;
 }
 
-static string RenderCampaignItemsTableBody(Campaign campaign, IReadOnlyList<CampaignItem> items, string filter, string antiForgeryField)
+static string RenderCampaignItemsTableBody(Campaign campaign, IReadOnlyList<CampaignItem> items, string filter, string query, string antiForgeryField)
 {
     var body = new StringBuilder();
 
@@ -1053,15 +1105,16 @@ static string RenderCampaignItemsTableBody(Campaign campaign, IReadOnlyList<Camp
 
     foreach (var item in items)
     {
-        body.Append(RenderCampaignItemRows(campaign, item, filter, antiForgeryField));
+        body.Append(RenderCampaignItemRows(campaign, item, filter, query, antiForgeryField));
     }
 
     return body.ToString();
 }
 
-static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, string filter, string antiForgeryField)
+static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, string filter, string query, string antiForgeryField)
 {
     var filterField = $"""<input type="hidden" name="filter" value="{HtmlView.E(filter)}">""";
+    var queryField = $"""<input type="hidden" name="q" value="{HtmlView.E((query ?? "").Trim())}">""";
     var canReview = IsReviewableItem(item);
     var needsPackageMathHint = NeedsPackageMathHint(item);
     var packageMathHint = needsPackageMathHint
@@ -1078,12 +1131,14 @@ static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, strin
   <form method="post" action="/campaigns/{campaign.Id}/items/{item.Id}/approve" class="async-campaign-form">
     {antiForgeryField}
     {filterField}
+    {queryField}
     <input type="hidden" name="comment" value="">
     <button type="submit" data-busy-label="Confirmando...">Confirmar</button>
   </form>
   <form method="post" action="/campaigns/{campaign.Id}/items/{item.Id}/reject" class="async-campaign-form">
     {antiForgeryField}
     {filterField}
+    {queryField}
     <input type="hidden" name="comment" value="">
     <button class="danger" type="submit" data-busy-label="Rejeitando...">Rejeitar</button>
   </form>
@@ -1133,6 +1188,7 @@ static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, strin
       <form method="post" action="/campaigns/{campaign.Id}/items/{item.Id}/save" class="async-campaign-form"{(needsPackageMathHint ? " data-package-math-form" : "")}>
         {antiForgeryField}
         {filterField}
+        {queryField}
         <div class="item-edit-grid">
           <div class="field span-2">
             <label>Descrição tabloide</label>
@@ -1188,6 +1244,7 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
     var selectedCategory = string.IsNullOrWhiteSpace(category) ? "" : category.Trim();
     var selectedCategoryLabel = string.IsNullOrWhiteSpace(selectedCategory) ? "Todas as categorias" : selectedCategory;
     var totalCatalogItems = categories.Sum(x => x.Count);
+    var categoryChart = RenderCatalogCategoryChart(entries);
     var body = new StringBuilder();
     body.AppendLine($$"""
 <div class="catalog-layout">
@@ -1243,6 +1300,7 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
       </div>
     </div>
   </aside>
+  <div class="catalog-main-column">
   <section class="panel catalog-results-panel">
     <div class="panel-header">
       <div>
@@ -1293,9 +1351,103 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
       </div>
     </div>
   </section>
+""");
+    body.AppendLine(categoryChart);
+    body.AppendLine("""
+  </div>
 </div>
 """);
     return body.ToString();
+}
+
+static string RenderCatalogCategoryChart(IReadOnlyList<ProductCatalogEntry> entries)
+{
+    if (entries.Count == 0)
+    {
+        return """
+<section class="panel catalog-chart-section">
+      <div class="panel-header">
+        <div>
+          <h2>Categorias dos itens visíveis</h2>
+          <p class="panel-subtitle">O gráfico aparece quando houver itens carregados na lista atual.</p>
+        </div>
+      </div>
+      <div class="empty-state">Sem itens visíveis para montar o gráfico de categorias.</div>
+    </section>
+""";
+    }
+
+    var palette = new[]
+    {
+        "#9b0000",
+        "#ffcf33",
+        "#ad5200",
+        "#7b4f00",
+        "#c53d13",
+        "#6f3600",
+        "#d97706",
+        "#b91c1c"
+    };
+
+    var groups = entries
+        .GroupBy(entry => string.IsNullOrWhiteSpace(entry.Category) ? "Sem categoria" : entry.Category.Trim())
+        .Select((group, index) => new
+        {
+            Category = group.Key,
+            Count = group.Count(),
+            Color = palette[index % palette.Length]
+        })
+        .OrderByDescending(item => item.Count)
+        .ThenBy(item => item.Category, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    var total = groups.Sum(item => item.Count);
+    var stops = new List<string>();
+    var legend = new StringBuilder();
+    var cursor = 0d;
+
+    foreach (var item in groups)
+    {
+        var share = total == 0 ? 0d : (double)item.Count / total;
+        var start = cursor * 100d;
+        cursor += share;
+        var end = cursor * 100d;
+        stops.Add($"{item.Color} {start.ToString("0.##", CultureInfo.InvariantCulture)}% {end.ToString("0.##", CultureInfo.InvariantCulture)}%");
+
+        var percentage = (share * 100d).ToString("0.#", CultureInfo.GetCultureInfo("pt-BR"));
+        legend.AppendLine($"""
+        <div class="catalog-chart-row">
+          <span class="catalog-chart-swatch" style="background:{item.Color}"></span>
+          <span class="catalog-chart-label">{HtmlView.E(item.Category)}</span>
+          <strong>{item.Count}</strong>
+          <span class="catalog-chart-share">{percentage}%</span>
+        </div>
+""");
+    }
+
+    return $$"""
+<section class="panel catalog-chart-section">
+      <div class="panel-header">
+        <div>
+          <h2>Categorias dos itens visíveis</h2>
+          <p class="panel-subtitle">Distribuição das categorias com base nos filtros atuais da lista.</p>
+        </div>
+        {{HtmlView.Badge(CountLabel(groups.Count, "categoria", "categorias"), groups.Count == 0 ? "" : "info")}}
+      </div>
+      <div class="catalog-chart-layout">
+        <div class="catalog-chart-visual-wrap">
+          <div class="catalog-chart-visual" style="--chart-stops: {{HtmlView.E(string.Join(", ", stops))}};"></div>
+          <div class="catalog-chart-total">
+            <strong>{{total}}</strong>
+            <span>itens visíveis</span>
+          </div>
+        </div>
+        <div class="catalog-chart-legend">
+{{legend}}
+        </div>
+      </div>
+    </section>
+""";
 }
 
 static string RenderRules(IReadOnlyList<ConversionRule> rules, string antiForgeryField)
@@ -1309,7 +1461,7 @@ static string RenderRules(IReadOnlyList<ConversionRule> rules, string antiForger
       {{antiForgeryField}}
       <div class="field"><label>Nome</label><input name="name" required></div>
       <div class="field"><label>Tipo</label><select name="rule_type"><option value="Pesavel">Pes&aacute;vel</option><option value="Fardo">Fardo</option><option value="Caixa">Caixa</option></select></div>
-      <div class="field"><label>Padr&atilde;o regex ou texto</label><input name="pattern" required></div>
+      <div class="field span-2"><label>Como a regra deve acontecer</label><input name="pattern_input" placeholder="Ex.: Fardo ou FD; Caixa ou CX/12" required><p class="hint">Escreva em linguagem natural. O sistema converte para regex ao salvar. Use `ou`, `;`, `|` ou nova linha para alternativas e `*` como coringa.</p></div>
       <div class="field"><label>Multiplicador</label><input name="multiplier" value="1"></div>
       <div class="field"><label>Unidade alvo</label><input name="target_unit" placeholder="Kg"></div>
       <div class="field"><label>Categorias alvo</label><input name="category_scope" placeholder="Ex.: Hortifruti, Bebidas"><p class="hint">Opcional. Informe uma ou mais categorias separadas por v&iacute;rgula para restringir a regra.</p></div>
@@ -1318,20 +1470,21 @@ static string RenderRules(IReadOnlyList<ConversionRule> rules, string antiForger
     </form>
   </section>
   <section>
-    <div class="tablewrap">
+    <div class="tablewrap rules-tablewrap">
       <table>
-        <thead><tr><th>Status</th><th>Nome</th><th>Tipo</th><th>Padr&atilde;o</th><th>Multiplicador</th><th>Unidade</th><th>Categorias</th><th>Revis&atilde;o</th><th></th></tr></thead>
+        <thead><tr><th>Status</th><th>Nome</th><th>Tipo</th><th>Como acontece</th><th>Multiplicador</th><th>Unidade</th><th>Categorias</th><th>Revis&atilde;o</th><th></th></tr></thead>
         <tbody>
 """);
 
     foreach (var rule in rules)
     {
+        var displayedPatternInput = RulePatternConverter.DisplayPatternInput(rule);
         body.AppendLine($"""
 <tr>
   <td>{HtmlView.Badge(rule.IsActive ? "Ativa" : "Inativa", rule.IsActive ? "ok" : "")}</td>
   <td>{HtmlView.E(DisplayRuleName(rule.Name))}</td>
   <td>{HtmlView.E(DisplayRuleType(rule.RuleType))}</td>
-  <td class="mono">{HtmlView.E(rule.Pattern)}</td>
+  <td class="rule-pattern-cell"><div class="rule-pattern-preview"><strong class="rule-pattern-text">{HtmlView.E(displayedPatternInput)}</strong></div><div class="rule-pattern-hover"><strong>{HtmlView.E(displayedPatternInput)}</strong><span class="muted mono">{HtmlView.E(rule.Pattern)}</span></div></td>
   <td>{rule.Multiplier:0.####}</td>
   <td>{HtmlView.E(string.IsNullOrWhiteSpace(rule.TargetUnit) ? "-" : rule.TargetUnit)}</td>
   <td>{HtmlView.E(string.IsNullOrWhiteSpace(rule.CategoryScope) ? "Todas" : rule.CategoryScope)}</td>
@@ -1340,6 +1493,7 @@ static string RenderRules(IReadOnlyList<ConversionRule> rules, string antiForger
     <div class="inline-actions">
       <button class="ghost" type="button" data-edit-toggle="edit-{rule.Id}">Editar</button>
       <form method="post" action="/rules/{rule.Id}/toggle">{antiForgeryField}<button class="secondary" type="submit">Alternar</button></form>
+      <form method="post" action="/rules/{rule.Id}/delete" onsubmit="return confirm('Excluir esta regra?');">{antiForgeryField}<button class="danger" type="submit">Excluir</button></form>
     </div>
   </td>
 </tr>
@@ -1360,8 +1514,9 @@ static string RenderRules(IReadOnlyList<ConversionRule> rules, string antiForger
             </select>
           </div>
           <div class="field span-2">
-            <label>Padr&atilde;o regex ou texto</label>
-            <input name="pattern" value="{HtmlView.E(rule.Pattern)}" required>
+            <label>Como a regra deve acontecer</label>
+            <input name="pattern_input" value="{HtmlView.E(displayedPatternInput)}" required>
+            <p class="hint">O sistema salva essa descri&ccedil;&atilde;o e converte para regex automaticamente. Regex gerado atual: <span class="mono">{HtmlView.E(rule.Pattern)}</span></p>
           </div>
           <div class="field">
             <label>Multiplicador</label>
@@ -1489,6 +1644,7 @@ static IEnumerable<CampaignItem> ApplyFilter(IReadOnlyList<CampaignItem> items, 
 static async Task<IResult> CampaignMutationResultAsync(
     Guid campaignId,
     string? filter,
+    string? query,
     string notice,
     HttpContext context,
     AppRepository repository,
@@ -1510,25 +1666,26 @@ static async Task<IResult> CampaignMutationResultAsync(
     var items = await repository.GetCampaignItemsAsync(campaignId, cancellationToken);
     var antiForgeryField = AntiForgeryField(antiforgery, context);
     var normalizedFilter = NormalizeFilter(filter);
-    var visibleItems = ApplyFilter(items, normalizedFilter).ToList();
+    var normalizedQuery = (query ?? "").Trim();
+    var visibleItems = ApplyCampaignSearch(ApplyFilter(items, normalizedFilter), normalizedQuery).ToList();
 
     return Results.Json(new
     {
         ok = true,
         notice,
         statsHtml = RenderCampaignStats(stats),
-        tableBodyHtml = RenderCampaignItemsTableBody(campaign, visibleItems, normalizedFilter, antiForgeryField)
+        tableBodyHtml = RenderCampaignItemsTableBody(campaign, visibleItems, normalizedFilter, normalizedQuery, antiForgeryField)
     });
 }
 
-static IResult CampaignMutationError(Guid campaignId, string? filter, string notice, HttpContext context, int statusCode = StatusCodes.Status400BadRequest)
+static IResult CampaignMutationError(Guid campaignId, string? filter, string? query, string notice, HttpContext context, int statusCode = StatusCodes.Status400BadRequest)
 {
     if (WantsJson(context.Request))
     {
         return Results.Json(new { ok = false, notice }, statusCode: statusCode);
     }
 
-    return RedirectWithNotice(BuildCampaignPath(campaignId, filter), notice);
+    return RedirectWithNotice(BuildCampaignPath(campaignId, filter, query), notice);
 }
 
 static async Task<UserAccount> CurrentUserAsync(HttpContext context, AppRepository repository, CancellationToken cancellationToken)
@@ -1610,6 +1767,22 @@ static string DisplayFilter(string? filter)
     };
 }
 
+static IEnumerable<CampaignItem> ApplyCampaignSearch(IEnumerable<CampaignItem> items, string? query)
+{
+    var normalizedQuery = TextNormalizer.NormalizeKey(query ?? "");
+    if (string.IsNullOrWhiteSpace(normalizedQuery))
+    {
+        return items;
+    }
+
+    return items.Where(item =>
+        TextNormalizer.NormalizeKey(item.DescriptionTabloid).Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase)
+        || TextNormalizer.NormalizeKey(item.DescriptionSolidus).Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase)
+        || TextNormalizer.NormalizeKey(item.Source).Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase)
+        || TextNormalizer.NormalizeKey(item.Barcode).Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase)
+        || item.SourceRow.ToString(CultureInfo.InvariantCulture).Contains(query?.Trim() ?? "", StringComparison.OrdinalIgnoreCase));
+}
+
 static string FilterButtonClass(string expectedFilter, string currentFilter)
 {
     return NormalizeFilter(expectedFilter) == NormalizeFilter(currentFilter) ? "button" : "button secondary";
@@ -1687,12 +1860,23 @@ static bool IsWorkbookFile(string fileName)
     return extension is ".xlsx" or ".xlsm";
 }
 
-static string BuildCampaignPath(Guid campaignId, string? filter)
+static string BuildCampaignPath(Guid campaignId, string? filter, string? query = null)
 {
+    var parameters = new List<string>();
     var normalized = NormalizeFilter(filter);
-    return string.IsNullOrWhiteSpace(normalized)
+    if (!string.IsNullOrWhiteSpace(normalized))
+    {
+        parameters.Add($"filter={UrlEncoder.Default.Encode(normalized)}");
+    }
+
+    if (!string.IsNullOrWhiteSpace(query))
+    {
+        parameters.Add($"q={UrlEncoder.Default.Encode(query.Trim())}");
+    }
+
+    return parameters.Count == 0
         ? $"/campaigns/{campaignId}"
-        : $"/campaigns/{campaignId}?filter={UrlEncoder.Default.Encode(normalized)}";
+        : $"/campaigns/{campaignId}?{string.Join("&", parameters)}";
 }
 
 static string CatalogQuerySuffix(string query, string category)

@@ -54,6 +54,7 @@ public sealed record ConversionRule(
     Guid Id,
     string Name,
     string RuleType,
+    string PatternInput,
     string Pattern,
     decimal Multiplier,
     string TargetUnit,

@@ -2,7 +2,7 @@
 titulo: bugs-resolvidos
 categoria: historico
 criado: 2026-06-08
-atualizado: 2026-06-09
+atualizado: 2026-06-10
 fontes: []
 links: [../sintese/mojibake-codificacao.md]
 ---
@@ -70,3 +70,17 @@ links: [../sintese/mojibake-codificacao.md]
 - Causa raiz: os textos visiveis estavam espalhados entre `Program.cs`, `HtmlView.cs`, seeds e mensagens de servico, sem uma camada de apresentacao que corrigisse dados legados ou padronizasse os rótulos.
 - Solucao: a UI passou a usar textos revisados em portugues brasileiro, com mapeamento de badges, historico e filtros para exibicao mais clara, alem da correcao das mensagens que sobem da importacao e da revisao.
 - Verificacao: `dotnet build ClubeDasOfertas.slnx` e `dotnet run --project tests\ClubeDasOfertas.Tests\ClubeDasOfertas.Tests.csproj`.
+
+## 2026-06-10 - Regra amigavel com pipe nao acionava revisao
+
+- Sintoma: regras escritas de forma amigavel com alternativas como `Fardo | Caixa` eram salvas, mas itens que deveriam casar com esse criterio passavam sem revisao.
+- Causa raiz: o conversor passou a aceitar `|` como separador amigavel, mas o detector ainda tratava a presenca de `|` como indicio suficiente de regex literal em alguns fluxos; isso fazia a entrada pular a conversao amigavel e permanecer como uma expressao inadequada para o matching esperado.
+- Solucao: o detector de regex literal foi refinado para preservar apenas sinais realmente caracteristicos de regex avancado, enquanto `|`, virgula e barra entre palavras continuam no fluxo amigavel e viram alternativas regex validas.
+- Verificacao: `dotnet build ClubeDasOfertas.slnx` e `dotnet run --project tests\ClubeDasOfertas.Tests\ClubeDasOfertas.Tests.csproj`.
+
+## 2026-06-10 - Regra semantica em descricao solidus nao retroagia para campanhas ja importadas
+
+- Sintoma: uma regra como `Se conter a palavra CERV na descricao solidus, aplicar a regra` era normalizada para `CERV`, mas itens da campanha `09.06.2026 F` que ja tinham sido importados continuavam com `review_required = false` e `review_status = NaoRequer`.
+- Causa raiz: a primeira correcao atuava apenas na linha de `conversion_rules`; os `campaign_items` antigos permaneciam com o resultado da avaliacao antiga, e o startup so reprocessava campanhas quando detectava uma nova mudanca naquele mesmo boot.
+- Solucao: o startup passou a sincronizar itens importados com as regras ativas em toda inicializacao, reaproveitando `CampaignImportService.EvaluateItem` e preservando itens ja `Aprovado` ou `Rejeitado` para nao sobrescrever decisoes humanas.
+- Verificacao: `dotnet run --project tests\\ClubeDasOfertas.Tests\\ClubeDasOfertas.Tests.csproj`, `dotnet build ClubeDasOfertas.slnx` e consulta real ao PostgreSQL mostrando itens com `description_solidus` contendo `CERV` marcados como `Pendente` na campanha `09.06.2026 F`.

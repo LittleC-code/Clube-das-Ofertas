@@ -1,4 +1,5 @@
 using ClubeDasOfertas.Web.Domain;
+using ClubeDasOfertas.Web.Services;
 using Npgsql;
 
 namespace ClubeDasOfertas.Web.Data;
@@ -13,6 +14,8 @@ public sealed class SchemaInitializer(AppDb db, IConfiguration configuration, Ap
 
         await SeedConfiguredUsersAsync(cancellationToken);
         await SeedRulesAsync(cancellationToken);
+        await NormalizeFriendlyRulePatternsAsync(cancellationToken);
+        await ReevaluateImportedCampaignItemsAsync(cancellationToken);
     }
 
     private async Task SeedConfiguredUsersAsync(CancellationToken cancellationToken)
@@ -65,6 +68,7 @@ public sealed class SchemaInitializer(AppDb db, IConfiguration configuration, Ap
             Guid.NewGuid(),
             "Pesáveis e cada 100 g",
             RuleTypes.Weighted,
+            "100 G ou CADA 100 G ou PRESUNTO ou MORTADELA ou ALHO A GRANEL ou QUEIJO MUSSARELA ou MUSSARELA ou SALAME",
             @"\b(100\s*G|CADA\s*100\s*G|PRESUNTO|MORTADELA|ALHO\s*A\s*GRANEL|QUEIJO\s*MUSSARELA|MUSSARELA|SALAME)\b",
             10m,
             "Kg",
@@ -78,6 +82,7 @@ public sealed class SchemaInitializer(AppDb db, IConfiguration configuration, Ap
             Guid.NewGuid(),
             "Fardos",
             RuleTypes.PackageBale,
+            "FD ou FARDO ou FARDOS",
             @"\b(FD|FARDO|FARDOS)\b",
             1m,
             "",
@@ -91,6 +96,7 @@ public sealed class SchemaInitializer(AppDb db, IConfiguration configuration, Ap
             Guid.NewGuid(),
             "Caixas",
             RuleTypes.PackageBox,
+            "CX/* ou C/* ou C * ou CAIXA ou CAIXAS",
             @"\b(CX/?\s*\d+|C/?\s*\d+|C\s+\d+|CAIXA|CAIXAS)\b",
             1m,
             "",
@@ -115,6 +121,7 @@ public sealed class SchemaInitializer(AppDb db, IConfiguration configuration, Ap
                 Guid.NewGuid(),
                 $"{legacyRule.Name} - Fardos",
                 RuleTypes.PackageBale,
+                "FD ou FARDO ou FARDOS",
                 @"\b(FD|FARDO|FARDOS)\b",
                 legacyRule.Multiplier,
                 legacyRule.TargetUnit,
@@ -128,6 +135,7 @@ public sealed class SchemaInitializer(AppDb db, IConfiguration configuration, Ap
                 Guid.NewGuid(),
                 $"{legacyRule.Name} - Caixas",
                 RuleTypes.PackageBox,
+                "CX/* ou C/* ou C * ou CAIXA ou CAIXAS",
                 @"\b(CX/?\s*\d+|C/?\s*\d+|C\s+\d+|CAIXA|CAIXAS)\b",
                 legacyRule.Multiplier,
                 legacyRule.TargetUnit,
@@ -138,6 +146,191 @@ public sealed class SchemaInitializer(AppDb db, IConfiguration configuration, Ap
                 DateTimeOffset.UtcNow), cancellationToken);
 
             await repository.SetRuleActiveAsync(legacyRule.Id, false, cancellationToken);
+        }
+    }
+
+    private async Task<bool> NormalizeFriendlyRulePatternsAsync(CancellationToken cancellationToken)
+    {
+        var rules = await repository.ListRulesAsync(cancellationToken);
+        var updatedAnyRule = false;
+
+        foreach (var rule in rules)
+        {
+            var patternInput = RulePatternConverter.DisplayPatternInput(rule);
+            if (string.IsNullOrWhiteSpace(patternInput))
+            {
+                continue;
+            }
+
+            RulePatternConversion conversion;
+            try
+            {
+                conversion = RulePatternConverter.Convert(patternInput);
+            }
+            catch (ArgumentException)
+            {
+                continue;
+            }
+
+            if (string.Equals(rule.Pattern, conversion.Pattern, StringComparison.Ordinal)
+                && string.Equals(rule.PatternInput, conversion.PatternInput, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var normalizedRule = rule with
+            {
+                PatternInput = conversion.PatternInput,
+                Pattern = conversion.Pattern,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+
+            await repository.UpdateRuleAsync(normalizedRule, cancellationToken);
+            updatedAnyRule = true;
+        }
+
+        return updatedAnyRule;
+    }
+
+    private async Task ReevaluateImportedCampaignItemsAsync(CancellationToken cancellationToken)
+    {
+        var rules = (await repository.ListRulesAsync(cancellationToken))
+            .Where(rule => rule.IsActive)
+            .ToList();
+        var campaigns = await repository.ListCampaignsAsync(cancellationToken);
+
+        foreach (var campaign in campaigns)
+        {
+            var items = (await repository.GetCampaignItemsAsync(campaign.Id, cancellationToken)).ToList();
+            if (items.Count == 0)
+            {
+                continue;
+            }
+
+            var reEvaluatedItems = new List<CampaignItem>(items.Count);
+            var changedAnyItem = false;
+            foreach (var item in items)
+            {
+                if (item.ReviewStatus is ReviewStatus.Approved or ReviewStatus.Rejected)
+                {
+                    reEvaluatedItems.Add(item);
+                    continue;
+                }
+
+                var catalogEntry = await ResolveCatalogEntryAsync(item, cancellationToken);
+                var reEvaluated = CampaignImportService.EvaluateItem(
+                    item.CampaignId,
+                    item.ImportBatchId,
+                    new RawCampaignRow(
+                        item.SourceRow,
+                        item.Source,
+                        item.OriginalVigency,
+                        item.DescriptionTabloid,
+                        item.QuantityRaw,
+                        item.PriceSaleRaw,
+                        item.PriceClubRaw),
+                    catalogEntry,
+                    rules);
+
+                reEvaluatedItems.Add(reEvaluated with
+                {
+                    Id = item.Id,
+                    CreatedAt = item.CreatedAt,
+                    UpdatedAt = DateTimeOffset.UtcNow,
+                    DescriptionSolidus = string.IsNullOrWhiteSpace(reEvaluated.DescriptionSolidus) ? item.DescriptionSolidus : reEvaluated.DescriptionSolidus,
+                    Barcode = string.IsNullOrWhiteSpace(reEvaluated.Barcode) ? item.Barcode : reEvaluated.Barcode,
+                    CodeType = string.IsNullOrWhiteSpace(reEvaluated.CodeType) ? item.CodeType : reEvaluated.CodeType
+                });
+            }
+
+            changedAnyItem = !items.SequenceEqual(reEvaluatedItems, CampaignItemComparer.Instance);
+            reEvaluatedItems = CampaignImportService.MarkDuplicateBarcodes(reEvaluatedItems);
+            changedAnyItem = changedAnyItem || !items.SequenceEqual(reEvaluatedItems, CampaignItemComparer.Instance);
+            if (changedAnyItem)
+            {
+                await repository.UpdateCampaignItemsAsync(reEvaluatedItems, cancellationToken);
+            }
+        }
+    }
+
+    private async Task<ProductCatalogEntry?> ResolveCatalogEntryAsync(CampaignItem item, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(item.Barcode))
+        {
+            var byBarcode = await repository.GetCatalogEntryByBarcodeAsync(item.Barcode, cancellationToken);
+            if (byBarcode is not null)
+            {
+                return byBarcode;
+            }
+        }
+
+        var matches = await repository.FindCatalogMatchesAsync(item.NormalizedDescriptionTabloid, cancellationToken);
+        var exactMatch = matches.FirstOrDefault(match =>
+            string.Equals(match.Barcode, item.Barcode, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(match.DescriptionSolidus, item.DescriptionSolidus, StringComparison.OrdinalIgnoreCase));
+        if (exactMatch is not null)
+        {
+            return exactMatch;
+        }
+
+        if (string.IsNullOrWhiteSpace(item.Barcode) && string.IsNullOrWhiteSpace(item.DescriptionSolidus))
+        {
+            return null;
+        }
+
+        return new ProductCatalogEntry(
+            Guid.Empty,
+            item.DescriptionTabloid,
+            item.NormalizedDescriptionTabloid,
+            "",
+            item.DescriptionSolidus,
+            TextNormalizer.NormalizeKey(item.DescriptionSolidus),
+            item.Barcode,
+            item.CodeType,
+            item.CreatedAt,
+            item.UpdatedAt);
+    }
+
+    private sealed class CampaignItemComparer : IEqualityComparer<CampaignItem>
+    {
+        public static CampaignItemComparer Instance { get; } = new();
+
+        public bool Equals(CampaignItem? x, CampaignItem? y)
+        {
+            if (ReferenceEquals(x, y))
+            {
+                return true;
+            }
+
+            if (x is null || y is null)
+            {
+                return false;
+            }
+
+            return x.Id == y.Id
+                && x.DescriptionTabloid == y.DescriptionTabloid
+                && x.NormalizedDescriptionTabloid == y.NormalizedDescriptionTabloid
+                && x.QuantityRaw == y.QuantityRaw
+                && x.PriceSaleRaw == y.PriceSaleRaw
+                && x.PriceClubRaw == y.PriceClubRaw
+                && x.Quantity == y.Quantity
+                && x.Unit == y.Unit
+                && x.OriginalPriceSale == y.OriginalPriceSale
+                && x.OriginalPriceClub == y.OriginalPriceClub
+                && x.FinalPriceSale == y.FinalPriceSale
+                && x.FinalPriceClub == y.FinalPriceClub
+                && x.DescriptionSolidus == y.DescriptionSolidus
+                && x.Barcode == y.Barcode
+                && x.CodeType == y.CodeType
+                && x.ReviewRequired == y.ReviewRequired
+                && x.ReviewStatus == y.ReviewStatus
+                && x.RiskFlags.SequenceEqual(y.RiskFlags)
+                && x.BlockingReasons.SequenceEqual(y.BlockingReasons);
+        }
+
+        public int GetHashCode(CampaignItem item)
+        {
+            return item.Id.GetHashCode();
         }
     }
 
@@ -176,6 +369,7 @@ CREATE TABLE IF NOT EXISTS conversion_rules (
     id uuid PRIMARY KEY,
     name text NOT NULL,
     rule_type text NOT NULL,
+    pattern_input text NOT NULL DEFAULT '',
     pattern text NOT NULL,
     multiplier numeric(12,4) NOT NULL,
     target_unit text NOT NULL,
@@ -188,6 +382,13 @@ CREATE TABLE IF NOT EXISTS conversion_rules (
 
 ALTER TABLE conversion_rules
     ADD COLUMN IF NOT EXISTS category_scope text NOT NULL DEFAULT '';
+
+ALTER TABLE conversion_rules
+    ADD COLUMN IF NOT EXISTS pattern_input text NOT NULL DEFAULT '';
+
+UPDATE conversion_rules
+SET pattern_input = pattern
+WHERE COALESCE(pattern_input, '') = '';
 
 CREATE TABLE IF NOT EXISTS campaigns (
     id uuid PRIMARY KEY,

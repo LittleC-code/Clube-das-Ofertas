@@ -49,6 +49,32 @@ Esse comando deixa a aplicacao ouvindo em `http://localhost:5088`.
 Get-CimInstance Win32_Process -Filter "name = 'dotnet.exe'" | Where-Object { $_.CommandLine -like '*ClubeDasOfertas.Web.csproj*' } | ForEach-Object { Stop-Process -Id $_.ProcessId }
 ```
 
+Se a aplicacao tiver sido iniciada em segundo plano ou se o `dotnet run` deixar o executavel hospedado ativo, finalize tambem qualquer instancia residual do processo web:
+
+```powershell
+Get-Process ClubeDasOfertas.Web -ErrorAction SilentlyContinue | Stop-Process -Force
+```
+
+Para encerrar tudo de uma vez com seguranca:
+
+```powershell
+Get-CimInstance Win32_Process | Where-Object {
+  ($_.Name -eq 'dotnet.exe' -and $_.CommandLine -like '*ClubeDasOfertas.Web.csproj*') -or
+  $_.Name -eq 'ClubeDasOfertas.Web.exe'
+} | ForEach-Object {
+  Stop-Process -Id $_.ProcessId -Force
+}
+```
+
+Para confirmar que o servico realmente parou:
+
+```powershell
+Get-CimInstance Win32_Process | Where-Object {
+  ($_.Name -eq 'dotnet.exe' -and $_.CommandLine -like '*ClubeDasOfertas.Web.csproj*') -or
+  $_.Name -eq 'ClubeDasOfertas.Web.exe'
+}
+```
+
 7. Reiniciar o servico:
 
 ```powershell
