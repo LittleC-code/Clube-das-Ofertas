@@ -20,3 +20,4 @@ Na ediÃ§Ã£o manual de itens da campanha, campos de quantidade e preÃ§o pod
 - A quantidade também aceita texto puro de unidade, como `Caixas` ou `Fardos`, e também permite misturar a unidade com a conta, como `120 caixas / 6`, usando quantidade base `1` quando não há número na entrada.
 - O preview da conta permanece visível sempre que o item entra no fluxo de fardos e caixas, mesmo depois de salvar e reabrir a edição, para validar novas conversões antes da confirmação.
 - Ao reabrir a edição, os campos de preço voltam com a expressão original da conta salva em `price_sale_raw` e `price_club_raw`; a listagem principal continua exibindo apenas os valores finais convertidos.
+- A `fonte` do item diferencia `Tabloide` e `App`; na importacao de planilhas prontas, esse valor precisa ser herdado de celulas mescladas para nao desaparecer nas linhas seguintes do mesmo bloco.

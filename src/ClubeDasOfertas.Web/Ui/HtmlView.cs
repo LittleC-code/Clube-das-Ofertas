@@ -1,4 +1,5 @@
 using ClubeDasOfertas.Web.Domain;
+using ClubeDasOfertas.Web.Services;
 using System.Net;
 using System.Security.Claims;
 using System.Text;
@@ -17,6 +18,7 @@ public static class HtmlView
         var signedIn = user.Identity?.IsAuthenticated == true;
         var displayName = signedIn ? user.FindFirstValue(ClaimTypes.Name) ?? user.Identity?.Name ?? "" : "";
         var role = signedIn ? user.FindFirstValue(ClaimTypes.Role) ?? "" : "";
+        var displayRole = signedIn ? DisplayRole(role) : "";
         var isCampaignTheme = pageClass.Contains("page-campaign", StringComparison.OrdinalIgnoreCase);
         var brand = isCampaignTheme
             ? $$"""
@@ -24,7 +26,7 @@ public static class HtmlView
   <summary class="menu-trigger">MENU</summary>
   <div class="menu-popover">
     <a href="/campaigns">Campanhas</a>
-    <a href="/catalog">Catálogo</a>
+    <a href="/catalog">Catálogo de produtos</a>
     <a href="/rules">Regras</a>
     <a href="/history">Histórico</a>
     <form method="post" action="/logout">{{antiForgeryField}}<button class="menu-link" type="submit">Sair</button></form>
@@ -35,24 +37,22 @@ public static class HtmlView
         var headerTitleHtml = isCampaignTheme
             ? $"""<div class="header-title">{E(string.IsNullOrWhiteSpace(headerTitle) ? title : headerTitle)}</div>"""
             : "";
-        var cornerBrand = isCampaignTheme
-            ? """<div class="header-brandmark"><img src="/clube-das-ofertas-preferencial.png" alt="Clube Das Ofertas"></div>"""
-            : "";
+        var footerBrand = """<div class="footer-brandmark"><img src="/clube-das-ofertas-secundaria.png" alt="Clube Das Ofertas"></div>""";
         var bodyClass = string.IsNullOrWhiteSpace(pageClass) ? "" : $" class=\"{E(pageClass)}\"";
         var nav = signedIn
             ? (isCampaignTheme
                 ? $$"""
-              <div class="userbox">{{E(displayName)}} <span>{{E(role)}}</span></div>
+              <div class="userbox">{{E(displayName)}} <span>{{E(displayRole)}}</span></div>
               """
                 : $$"""
               <nav class="nav">
                 <a href="/campaigns">Campanhas</a>
-                <a href="/catalog">Catálogo</a>
+                <a href="/catalog">Catálogo de produtos</a>
                 <a href="/rules">Regras</a>
                 <a href="/history">Histórico</a>
                 <form method="post" action="/logout">{{antiForgeryField}}<button class="ghost" type="submit">Sair</button></form>
               </nav>
-              <div class="userbox">{E(displayName)} <span>{E(role)}</span></div>
+              <div class="userbox">{E(displayName)} <span>{E(displayRole)}</span></div>
               """)
             : "";
 
@@ -68,25 +68,27 @@ public static class HtmlView
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Source+Sans+Pro:wght@400;600;700&display=swap');
     :root {
-      --bg: #f3f6fb;
+      --bg: #fff8df;
       --panel: #ffffff;
-      --text: #18212f;
-      --muted: #637083;
-      --line: #d7deea;
-      --line-soft: #e8edf5;
-      --brand: #0f766e;
-      --brand-strong: #0b5f59;
-      --warn: #b45309;
-      --danger: #b91c1c;
-      --ok: #15803d;
-      --info: #1d4ed8;
+      --text: #45180b;
+      --muted: #7c5d45;
+      --line: #f0d06e;
+      --line-soft: #f7e7aa;
+      --brand: #9b0000;
+      --brand-strong: #760000;
+      --brand-soft: #fff1a8;
+      --brand-soft-strong: #ffe160;
+      --warn: #7b4f00;
+      --danger: #9b0000;
+      --ok: #6f3600;
+      --info: #ad5200;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: "Segoe UI", Arial, sans-serif;
       color: var(--text);
-      background: var(--bg);
+      background: linear-gradient(180deg, #fffdf5 0%, var(--bg) 100%);
       letter-spacing: 0;
     }
     header {
@@ -97,7 +99,7 @@ public static class HtmlView
       min-height: 58px;
       padding: 0 24px;
       border-bottom: 1px solid var(--line);
-      background: var(--panel);
+      background: linear-gradient(180deg, #ffffff 0%, #fff8dc 100%);
       position: sticky;
       top: 0;
       z-index: 10;
@@ -125,7 +127,7 @@ public static class HtmlView
       border-radius: 6px;
       cursor: pointer;
     }
-    .nav a:hover, .ghost:hover { background: #eef1f4; }
+    .nav a:hover, .ghost:hover { background: var(--brand-soft); }
     .header-title {
       justify-self: center;
       font-size: 18px;
@@ -165,7 +167,7 @@ public static class HtmlView
       border: 1px solid var(--line);
       border-radius: 10px;
       background: var(--panel);
-      box-shadow: 0 18px 35px rgba(15, 23, 42, 0.18);
+      box-shadow: 0 18px 35px rgba(110, 50, 13, 0.14);
       display: grid;
       gap: 4px;
       z-index: 30;
@@ -185,7 +187,7 @@ public static class HtmlView
     }
     .menu-popover a:hover,
     .menu-link:hover {
-      background: #eef1f4;
+      background: var(--brand-soft);
     }
     .userbox { color: var(--muted); font-size: 13px; white-space: nowrap; }
     .userbox span { margin-left: 6px; color: var(--brand); font-weight: 700; }
@@ -195,7 +197,7 @@ public static class HtmlView
       justify-content: flex-end;
       gap: 12px;
     }
-    main { padding: 22px 24px 36px; max-width: 1460px; margin: 0 auto; }
+    main { padding: 22px 24px 96px; max-width: 1460px; margin: 0 auto; }
     h1 { font-size: 24px; margin: 0 0 16px; }
     h2 { font-size: 17px; margin: 0 0 12px; }
     .grid { display: grid; gap: 16px; }
@@ -213,7 +215,7 @@ public static class HtmlView
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 16px;
-      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+      box-shadow: 0 12px 28px rgba(120, 45, 8, 0.08);
     }
     .stat strong { display: block; font-size: 22px; }
     .stat span { color: var(--muted); font-size: 12px; }
@@ -252,12 +254,12 @@ public static class HtmlView
     .notice {
       margin-bottom: 14px;
       padding: 10px 12px;
-      background: #ecfdf5;
-      border: 1px solid #a7f3d0;
+      background: #fff5c4;
+      border: 1px solid #f0d06e;
       border-radius: 6px;
-      color: #065f46;
+      color: #6f3600;
     }
-    .error { background: #fef2f2; border-color: #fecaca; color: var(--danger); }
+    .error { background: #ffe4e4; border-color: #f1b1b1; color: var(--danger); }
     label { display: block; font-size: 13px; color: var(--muted); margin: 0 0 5px; }
     input, select, textarea {
       width: 100%;
@@ -286,28 +288,28 @@ public static class HtmlView
       white-space: nowrap;
     }
     button:hover, .button:hover { background: var(--brand-strong); }
-    .button.secondary, button.secondary { background: #fff; color: var(--text); border-color: var(--line); }
-    .button.secondary:hover, button.secondary:hover { background: #eef1f4; }
+    .button.secondary, button.secondary { background: #fffdf5; color: var(--brand); border-color: var(--brand); }
+    .button.secondary:hover, button.secondary:hover { background: var(--brand-soft); }
     .button.danger, button.danger { background: var(--danger); border-color: var(--danger); }
     .tablewrap {
       overflow: auto;
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
-      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+      box-shadow: 0 12px 28px rgba(120, 45, 8, 0.08);
     }
     table { width: 100%; border-collapse: collapse; min-width: 980px; }
     th, td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 13px; }
-    th { background: #f4f7fb; font-size: 12px; color: #374151; position: sticky; top: 0; z-index: 2; }
+    th { background: #fff0b6; font-size: 12px; color: var(--brand); position: sticky; top: 0; z-index: 2; }
     tr:last-child td { border-bottom: 0; }
     .muted { color: var(--muted); }
     .mono { font-family: Consolas, "Courier New", monospace; }
     .badges { display: flex; gap: 4px; flex-wrap: wrap; }
-    .badge { display: inline-flex; border-radius: 999px; padding: 3px 7px; font-size: 12px; font-weight: 700; background: #eef1f4; color: #374151; }
-    .badge.ok { background: #dcfce7; color: var(--ok); }
-    .badge.warn { background: #ffedd5; color: var(--warn); }
-    .badge.danger { background: #fee2e2; color: var(--danger); }
-    .badge.info { background: #dbeafe; color: var(--info); }
+    .badge { display: inline-flex; border-radius: 999px; padding: 3px 7px; font-size: 12px; font-weight: 700; background: #fff5cf; color: var(--text); }
+    .badge.ok { background: #ffeaa0; color: var(--ok); }
+    .badge.warn { background: #ffd94f; color: var(--warn); }
+    .badge.danger { background: #ffd9d9; color: var(--danger); }
+    .badge.info { background: #ffe5b5; color: var(--info); }
     .actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 220px; }
     .actions form { margin: 0; }
     .item-edit-row td {
@@ -317,7 +319,7 @@ public static class HtmlView
     .item-edit-card {
       padding: 16px;
       border-top: 1px solid var(--line-soft);
-      background: #fbfcfe;
+      background: #fffbf1;
     }
     .item-edit-grid {
       display: grid;
@@ -339,17 +341,48 @@ public static class HtmlView
       gap: 8px;
       align-items: center;
     }
+    .campaign-vigency-note {
+      margin-top: -6px;
+      margin-bottom: 16px;
+    }
+    .campaign-price-stack {
+      display: grid;
+      gap: 4px;
+    }
+    .campaign-price-stack-compact {
+      white-space: nowrap;
+    }
+    .campaign-description-stack {
+      display: grid;
+      gap: 10px;
+    }
+    .campaign-item-actions {
+      margin-top: 0;
+      padding-top: 0;
+      margin-left: 0;
+      gap: 6px;
+      flex-wrap: nowrap;
+      align-items: stretch;
+      justify-content: flex-start;
+    }
+    .campaign-item-actions form {
+      margin: 0;
+    }
+    .campaign-item-actions button,
+    .campaign-item-actions .button {
+      padding: 6px 10px;
+    }
     .inline-actions .ghost {
       border: 1px solid var(--line);
       border-radius: 6px;
       padding: 7px 12px;
-      background: #fff;
+      background: #fffef9;
     }
     .calc-preview {
       padding: 10px 12px;
       border: 1px dashed var(--line);
       border-radius: 8px;
-      background: #f8fafc;
+      background: #fff9e7;
       color: var(--text);
       font-size: 13px;
       line-height: 1.5;
@@ -415,24 +448,37 @@ public static class HtmlView
       background: transparent;
     }
     .catalog-category:hover {
-      background: #eef1f4;
+      background: var(--brand-soft);
     }
     .catalog-category strong {
       font-size: 14px;
     }
     .catalog-category.active {
       border-color: var(--brand);
-      background: rgba(15, 118, 110, 0.08);
+      background: rgba(155, 0, 0, 0.08);
     }
     .catalog-list {
       display: grid;
       gap: 12px;
     }
+    .catalog-search-form {
+      margin-bottom: 18px;
+    }
+    .catalog-results-panel {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 110px);
+      min-height: 560px;
+      overflow: hidden;
+    }
     .catalog-list-shell {
-      max-height: calc(100vh - 220px);
-      overflow-y: auto;
+      flex: 1;
+      min-height: 0;
+      overflow-y: scroll;
       overflow-x: hidden;
-      padding-right: 6px;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+      padding-right: 8px;
     }
     .catalog-item {
       display: grid;
@@ -442,7 +488,7 @@ public static class HtmlView
       padding: 16px;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: rgba(255, 255, 255, 0.02);
+      background: #fffef9;
     }
     .catalog-item-main strong {
       display: block;
@@ -518,7 +564,7 @@ public static class HtmlView
       border: 1px dashed var(--line);
       border-radius: 8px;
       color: var(--muted);
-      background: #fbfcfe;
+      background: #fffbf1;
     }
     .login {
       max-width: 420px;
@@ -528,10 +574,14 @@ public static class HtmlView
       border-radius: 6px;
       padding: 22px;
     }
-    .header-brandmark {
+    .footer-brandmark {
+      position: fixed;
+      right: 4px;
+      bottom: 6px;
+      z-index: 25;
       pointer-events: none;
     }
-    .header-brandmark img {
+    .footer-brandmark img {
       display: block;
       width: min(82px, 6vw);
       min-width: 60px;
@@ -539,8 +589,8 @@ public static class HtmlView
       opacity: 0.88;
     }
     body.page-campaign {
-      background: #000000;
-      color: #ffffff;
+      background: linear-gradient(180deg, #fff9e8 0%, #fff0b8 100%);
+      color: var(--text);
       font-family: "Source Sans Pro", "Segoe UI", Arial, sans-serif;
       font-size: 17px;
     }
@@ -568,9 +618,9 @@ public static class HtmlView
     body.page-campaign .panel,
     body.page-campaign .tablewrap,
     body.page-campaign .empty-state {
-      background: #000000;
-      border-color: #2b2b2b;
-      box-shadow: none;
+      background: rgba(255, 255, 255, 0.94);
+      border-color: var(--line);
+      box-shadow: 0 16px 30px rgba(120, 45, 8, 0.10);
     }
     body.page-campaign h1,
     body.page-campaign h2,
@@ -619,32 +669,32 @@ public static class HtmlView
     body.page-campaign .hint,
     body.page-campaign .empty-state,
     body.page-campaign .notice {
-      color: #ffffff;
+      color: var(--text);
     }
     body.page-campaign .menu-popover {
-      background: #050505;
-      border-color: #2b2b2b;
-      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+      background: #fffef8;
+      border-color: var(--line);
+      box-shadow: 0 18px 40px rgba(120, 45, 8, 0.14);
     }
     body.page-campaign .stat span {
-      color: #b8b8b8;
+      color: var(--muted);
     }
     body.page-campaign .menu-popover a:hover,
     body.page-campaign .menu-link:hover,
     body.page-campaign .ghost:hover,
     body.page-campaign .button.secondary:hover,
     body.page-campaign button.secondary:hover {
-      background: #141414;
+      background: var(--brand-soft);
     }
     body.page-campaign input,
     body.page-campaign select,
     body.page-campaign textarea {
-      background: #050505;
-      color: #ffffff;
-      border-color: #2b2b2b;
+      background: #fffdf7;
+      color: var(--text);
+      border-color: var(--line);
     }
     body.page-campaign input[type="date"] {
-      color-scheme: dark;
+      color-scheme: light;
       cursor: pointer;
     }
     body.page-campaign input[type="date"]::-webkit-calendar-picker-indicator {
@@ -652,92 +702,112 @@ public static class HtmlView
     }
     body.page-campaign input::placeholder,
     body.page-campaign textarea::placeholder {
-      color: #b8b8b8;
+      color: #b18c67;
     }
     body.page-campaign th {
-      background: #090909;
-      color: #ffffff;
-      border-bottom-color: #2b2b2b;
+      background: #fff0b6;
+      color: var(--brand);
+      border-bottom-color: var(--line);
     }
     body.page-campaign td {
-      border-bottom-color: #1f1f1f;
+      border-bottom-color: var(--line-soft);
     }
     body.page-campaign .item-edit-row td,
     body.page-campaign .item-edit-card {
-      background: #050505;
-      border-color: #2b2b2b;
+      background: #fffbf3;
+      border-color: var(--line);
     }
     body.page-campaign .item-edit-card .form-actions .secondary {
-      background: #141414;
-      color: #ffffff;
-      border-color: #ffffff;
+      background: #fffef8;
+      color: var(--brand);
+      border-color: var(--brand);
     }
     body.page-campaign .item-edit-card .form-actions .secondary:hover {
-      background: #242424;
-      border-color: #ffffff;
+      background: var(--brand-soft);
+      border-color: var(--brand);
     }
     body.page-campaign .notice {
-      background: #101010;
-      border-color: #2b2b2b;
+      background: #fff5c4;
+      border-color: var(--line);
     }
     body.page-campaign .notice.error {
-      background: #1a0909;
-      border-color: #5a1a1a;
+      background: #ffe4e4;
+      border-color: #f1b1b1;
     }
     body.page-campaign .button,
     body.page-campaign button {
-      background: #d71912;
-      border-color: #d71912;
+      background: var(--brand);
+      border-color: var(--brand);
       color: #ffffff;
     }
     body.page-campaign .button:hover,
     body.page-campaign button:hover {
-      background: #b9130f;
-      border-color: #b9130f;
+      background: var(--brand-strong);
+      border-color: var(--brand-strong);
     }
     body.page-campaign .button.secondary,
     body.page-campaign button.secondary,
     body.page-campaign .ghost {
-      background: transparent;
-      color: #ffffff;
-      border-color: #ffffff;
+      background: #fffef8;
+      color: var(--brand);
+      border-color: var(--brand);
     }
     body.page-campaign .badge {
-      background: #151515;
-      color: #ffffff;
+      background: #fff5cf;
+      color: var(--text);
     }
     body.page-campaign .badge.ok {
-      background: #0e3d1f;
-      color: #ffffff;
+      background: #ffeaa0;
+      color: var(--ok);
     }
     body.page-campaign .badge.warn {
-      background: #553f00;
-      color: #ffffff;
+      background: #ffd94f;
+      color: var(--warn);
     }
     body.page-campaign .badge.danger {
-      background: #5a1212;
-      color: #ffffff;
+      background: #ffd9d9;
+      color: var(--danger);
     }
     body.page-campaign .badge.info {
-      background: #102a5a;
-      color: #ffffff;
+      background: #ffe5b5;
+      color: var(--info);
     }
     body.page-campaign .catalog-sidebar-section + .catalog-sidebar-section,
     body.page-campaign .catalog-item,
     body.page-campaign .catalog-category,
     body.page-campaign .calc-preview {
-      border-color: #2b2b2b;
+      border-color: var(--line);
     }
     body.page-campaign .calc-preview {
-      background: #050505;
-      color: #ffffff;
+      background: #fff9e7;
+      color: var(--text);
     }
     body.page-campaign .catalog-category:hover {
-      background: #141414;
+      background: var(--brand-soft);
     }
     body.page-campaign .catalog-category.active {
-      border-color: #d71912;
-      background: rgba(215, 25, 18, 0.18);
+      border-color: var(--brand);
+      background: rgba(255, 225, 96, 0.42);
+    }
+    body.page-campaign [data-campaign-detail] th,
+    body.page-campaign [data-campaign-detail] td {
+      white-space: nowrap;
+    }
+    body.page-campaign [data-campaign-detail] .campaign-description-cell {
+      white-space: normal;
+      min-width: 240px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+    body.page-campaign [data-campaign-detail] .campaign-risks-cell {
+      white-space: normal;
+      min-width: 180px;
+    }
+    body.page-campaign [data-campaign-detail] .campaign-risks-cell .badges {
+      flex-wrap: wrap;
+    }
+    body.page-campaign [data-campaign-detail] .badges {
+      flex-wrap: nowrap;
     }
     @media (max-width: 900px) {
       header {
@@ -759,13 +829,14 @@ public static class HtmlView
       .header-userzone {
         justify-content: flex-start;
       }
-      .header-brandmark img {
+      .footer-brandmark img {
         width: min(76px, 18vw);
         min-width: 56px;
       }
       .campaign-shell { grid-template-columns: 1fr; }
       .catalog-layout { grid-template-columns: 1fr; }
       .catalog-sidebar { position: static; }
+      .catalog-results-panel { height: auto; min-height: 0; overflow: visible; }
       .catalog-list-shell { max-height: none; overflow: visible; padding-right: 0; }
       .catalog-item {
         grid-template-columns: 1fr;
@@ -779,7 +850,7 @@ public static class HtmlView
         padding: 16px;
         border: 1px solid var(--line);
         border-radius: 8px;
-        background: #fbfcfe;
+      background: #fffbf1;
       }
       .campaign-row + .campaign-row {
         margin-top: 10px;
@@ -820,13 +891,13 @@ public static class HtmlView
     {{headerTitleHtml}}
     <div class="header-userzone">
       {{nav}}
-      {{cornerBrand}}
     </div>
   </header>
   <main>
     <div id="page-notice">{{noticeHtml}}</div>
     {{body}}
   </main>
+  {{footerBrand}}
   <script>
     (() => {
       const openDatePicker = (input) => {
@@ -939,7 +1010,7 @@ public static class HtmlView
             const payload = await response.json();
             if (!response.ok || !payload.ok) {
               resetToDefault();
-              setHint(payload.notice || 'Nao foi possivel ler as abas desse arquivo.', true);
+              setHint(payload.notice || 'Não foi possível ler as abas desse arquivo.', true);
               return;
             }
 
@@ -952,7 +1023,7 @@ public static class HtmlView
             const worksheets = Array.isArray(payload.worksheets) ? payload.worksheets : [];
             if (worksheets.length === 0) {
               resetToDefault();
-              setHint('Nenhuma aba disponivel foi encontrada nesse arquivo.', true);
+              setHint('Nenhuma aba disponível foi encontrada nesse arquivo.', true);
               return;
             }
 
@@ -1201,29 +1272,29 @@ public static class HtmlView
               }
             }
           } catch {
-            lines.push('Quantidade: conta invalida');
+            lines.push('Quantidade: conta inválida');
           }
 
           try {
             if (saleValue) {
               const saleResult = evaluateExpression(saleValue);
               if (saleResult !== null) {
-                lines.push(`Preco venda: ${moneyFormatter.format(saleResult)}`);
+                lines.push(`Preço venda: ${moneyFormatter.format(saleResult)}`);
               }
             }
           } catch {
-            lines.push('Preco venda: conta invalida');
+            lines.push('Preço venda: conta inválida');
           }
 
           try {
             if (clubValue) {
               const clubResult = evaluateExpression(clubValue);
               if (clubResult !== null) {
-                lines.push(`Preco clube: ${moneyFormatter.format(clubResult)}`);
+                lines.push(`Preço clube: ${moneyFormatter.format(clubResult)}`);
               }
             }
           } catch {
-            lines.push('Preco clube: conta invalida');
+            lines.push('Preço clube: conta inválida');
           }
 
           if (lines.length === 0) {
@@ -1284,14 +1355,7 @@ public static class HtmlView
         var builder = new StringBuilder("""<div class="badges">""");
         foreach (var value in values)
         {
-            var kind = value switch
-            {
-                "SEM_CATALOGO" or "PRECO_INVALIDO" or "QUANTIDADE_INVALIDA" => "danger",
-                "PESAVEL" or "FARDO_CAIXA" => "warn",
-                "DUPLICIDADE" => "info",
-                _ => ""
-            };
-            builder.Append(Badge(value, kind));
+            builder.Append(Badge(DisplayBadgeText(value), BadgeKind(value)));
         }
 
         builder.Append("</div>");
@@ -1314,6 +1378,26 @@ public static class HtmlView
         };
     }
 
+    public static string SourceBadge(string source)
+    {
+        var normalized = source?.Trim() ?? "";
+        var kind = normalized switch
+        {
+            "App" or "Aplicativo" => "info",
+            "Tabloide" => "warn",
+            "" => "",
+            _ => "ok"
+        };
+
+        var displaySource = normalized switch
+        {
+            "App" => "Aplicativo",
+            _ => string.IsNullOrWhiteSpace(normalized) ? "Sem fonte" : normalized
+        };
+
+        return Badge(displaySource, kind);
+    }
+
     public static string CampaignStatusBadge(string status)
     {
         return status switch
@@ -1322,6 +1406,53 @@ public static class HtmlView
             CampaignStatus.Imported => Badge("Importado", "warn"),
             CampaignStatus.Exported => Badge("Exportado", "ok"),
             _ => Badge(status)
+        };
+    }
+
+    private static string BadgeKind(string value)
+    {
+        return TextNormalizer.NormalizeKey(value) switch
+        {
+            "SEM_CATALOGO" or "PRECO_INVALIDO" or "QUANTIDADE_INVALIDA" => "danger",
+            "PRODUTO SEM CATALOGO/CODIGO" or "PRECO INVALIDO OU ZERADO" or "QUANTIDADE INVALIDA" => "danger",
+            "PESAVEL" or "FARDO_CAIXA" or "FARDO" or "CAIXA" => "warn",
+            "CONVERSAO DE PESAVEL PENDENTE" or "FARDO PENDENTE" or "CAIXA PENDENTE" or "FARDO/CAIXA PENDENTE" => "warn",
+            "REVISAO REJEITADA" => "danger",
+            "DUPLICIDADE" => "info",
+            _ => ""
+        };
+    }
+
+    private static string DisplayBadgeText(string value)
+    {
+        return TextNormalizer.NormalizeKey(value) switch
+        {
+            "SEM_CATALOGO" => "Sem catálogo",
+            "PRECO_INVALIDO" => "Preço inválido",
+            "QUANTIDADE_INVALIDA" => "Quantidade inválida",
+            "PESAVEL" => "Pesável",
+            "FARDO_CAIXA" => "Fardo/Caixa",
+            "FARDO" => "Fardo",
+            "CAIXA" => "Caixa",
+            "DUPLICIDADE" => "Duplicidade",
+            "PRODUTO SEM CATALOGO/CODIGO" => "Produto sem catálogo/código",
+            "PRECO INVALIDO OU ZERADO" => "Preço inválido ou zerado",
+            "QUANTIDADE INVALIDA" => "Quantidade inválida",
+            "CONVERSAO DE PESAVEL PENDENTE" => "Conversão de pesável pendente",
+            "FARDO PENDENTE" => "Fardo pendente",
+            "CAIXA PENDENTE" => "Caixa pendente",
+            "FARDO/CAIXA PENDENTE" => "Fardo/caixa pendente",
+            "REVISAO REJEITADA" => "Revisão rejeitada",
+            _ => value
+        };
+    }
+
+    private static string DisplayRole(string role)
+    {
+        return role switch
+        {
+            Roles.Admin => "Administrador",
+            _ => role
         };
     }
 }

@@ -5,12 +5,6 @@ using System.Text;
 
 namespace ClubeDasOfertas.Web.Services;
 
-public sealed class ExportBlockedException(IReadOnlyList<CampaignItem> blockedItems)
-    : Exception("Exportacao bloqueada por pendencias criticas.")
-{
-    public IReadOnlyList<CampaignItem> BlockedItems { get; } = blockedItems;
-}
-
 public sealed class ExportService(AppRepository repository)
 {
     private static readonly CultureInfo PtBr = CultureInfo.GetCultureInfo("pt-BR");
@@ -20,13 +14,7 @@ public sealed class ExportService(AppRepository repository)
         var items = await repository.GetCampaignItemsAsync(campaign.Id, cancellationToken);
         if (items.Count == 0)
         {
-            throw new InvalidOperationException("A campanha nao possui itens importados.");
-        }
-
-        var blocked = items.Where(x => x.BlockingReasons.Count > 0).ToList();
-        if (blocked.Count > 0)
-        {
-            throw new ExportBlockedException(blocked);
+            throw new InvalidOperationException("A campanha não possui itens importados.");
         }
 
         var content = BuildCsv(campaign, items);
@@ -44,10 +32,10 @@ public sealed class ExportService(AppRepository repository)
         return export;
     }
 
-    private static string BuildCsv(Campaign campaign, IReadOnlyList<CampaignItem> items)
+    internal static string BuildCsv(Campaign campaign, IReadOnlyList<CampaignItem> items)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("codigo_barras;preco_venda;preco_clube;quantidade;unidade;fonte;vigencia_inicio;vigencia_fim;descricao_tabloide;descricao_solidus;tipo_codigo");
+        builder.AppendLine("codigo_barras;preco_venda;preco_clube;quantidade;unidade;fonte;vigencia_inicio;vigencia_fim;descricao_tabloide;descricao_solidus;tipo_codigo;status_item;status_revisao;revisao_obrigatoria;riscos;pendencias;linha_origem;vigencia_original;preco_original_venda;preco_original_clube");
 
         foreach (var item in items)
         {
@@ -63,12 +51,54 @@ public sealed class ExportService(AppRepository repository)
                 Parsing.DatePtBr(campaign.ValidTo),
                 item.DescriptionTabloid,
                 item.DescriptionSolidus,
-                item.CodeType
+                item.CodeType,
+                ItemStatus(item),
+                ReviewStatusLabel(item.ReviewStatus),
+                item.ReviewRequired ? "Sim" : "Nao",
+                JoinValues(item.RiskFlags),
+                JoinValues(item.BlockingReasons),
+                item.SourceRow.ToString(CultureInfo.InvariantCulture),
+                item.OriginalVigency,
+                Parsing.MoneyPtBr(item.OriginalPriceSale),
+                Parsing.MoneyPtBr(item.OriginalPriceClub)
             };
 
             builder.AppendLine(string.Join(';', values.Select(TextNormalizer.EscapeCsv)));
         }
 
         return builder.ToString();
+    }
+
+    internal static string ItemStatus(CampaignItem item)
+    {
+        if (item.BlockingReasons.Count > 0)
+        {
+            return "Bloqueado";
+        }
+
+        return item.ReviewStatus switch
+        {
+            ReviewStatus.Approved => "Aprovado",
+            ReviewStatus.Pending => "Pendente",
+            ReviewStatus.Rejected => "Rejeitado",
+            _ => "Pronto"
+        };
+    }
+
+    private static string ReviewStatusLabel(string reviewStatus)
+    {
+        return reviewStatus switch
+        {
+            ReviewStatus.NotRequired => "Nao requerido",
+            ReviewStatus.Pending => "Pendente",
+            ReviewStatus.Approved => "Aprovado",
+            ReviewStatus.Rejected => "Rejeitado",
+            _ => reviewStatus
+        };
+    }
+
+    private static string JoinValues(IReadOnlyList<string> values)
+    {
+        return values.Count == 0 ? "" : string.Join(" | ", values);
     }
 }

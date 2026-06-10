@@ -1,56 +1,56 @@
-# Índice da Wiki — Clube Das Ofertas
+# Indice da Wiki - Clube Das Ofertas
 
-Catálogo de todas as páginas da wiki. Atualizado pelo agente a cada operação de ingestão, consulta ou pós-tarefa.
+Catalogo de todas as paginas da wiki. Atualizado pelo agente a cada operacao de ingestao, consulta ou pos-tarefa.
 
 ---
 
-## Domínio
+## Dominio
 
-| Página | Resumo | Atualizado |
+| Pagina | Resumo | Atualizado |
 |---|---|---|
-| [campanha.md](dominio/campanha.md) | Estrutura, ciclo de vida e estados de uma campanha | — |
-| [item.md](dominio/item.md) | Definição de item, campos obrigatórios e regras de validação | — |
-| [matching.md](dominio/matching.md) | Regras de correspondência item ↔ produto do catálogo | — |
-| [risco.md](dominio/risco.md) | Critérios de classificação de risco e flags de revisão manual | — |
-| [exportacao.md](dominio/exportacao.md) | Formato de saída CSV, mapeamento de colunas para o CRM | — |
+| [campanha.md](dominio/campanha.md) | Estrutura, ciclo de vida e estados de uma campanha | - |
+| [item.md](dominio/item.md) | Definicao de item, campos obrigatorios e regras de validacao | 2026-06-09 |
+| [matching.md](dominio/matching.md) | Regras de correspondencia item -> produto do catalogo | - |
+| [risco.md](dominio/risco.md) | Criterios de classificacao de risco e flags de revisao manual | - |
+| [exportacao.md](dominio/exportacao.md) | Formato de saida CSV, mapeamento de colunas para o CRM | 2026-06-09 |
 
 ---
 
-## Técnico
+## Tecnico
 
-| Página | Resumo | Atualizado |
+| Pagina | Resumo | Atualizado |
 |---|---|---|
-| [arquitetura.md](tecnico/arquitetura.md) | Visão geral da arquitetura, camadas e responsabilidades | — |
-| [apprepository.md](tecnico/apprepository.md) | Padrões de acesso a dados, queries recorrentes, convenções SQL | — |
-| [autenticacao.md](tecnico/autenticacao.md) | Fluxo de autenticação por cookie, configuração e decisões | — |
-| [importacao-xlsm.md](tecnico/importacao-xlsm.md) | Como a leitura de planilhas .xlsm funciona, bibliotecas e edge cases | — |
+| [arquitetura.md](tecnico/arquitetura.md) | Visao geral da arquitetura, layout administrativo e responsabilidades | 2026-06-09 |
+| [apprepository.md](tecnico/apprepository.md) | Padroes de acesso a dados, queries recorrentes, convencoes SQL | - |
+| [autenticacao.md](tecnico/autenticacao.md) | Fluxo de autenticacao por cookie, configuracao e decisoes | - |
+| [importacao-xlsm.md](tecnico/importacao-xlsm.md) | Como a leitura de planilhas .xlsm funciona, bibliotecas e edge cases | - |
 
 ---
 
-## Histórico
+## Historico
 
-| Página | Resumo | Atualizado |
+| Pagina | Resumo | Atualizado |
 |---|---|---|
-| [bugs-resolvidos.md](historico/bugs-resolvidos.md) | Registro de bugs corrigidos com causa raiz e solução | 2026-06-08 |
-| [decisoes-revertidas.md](historico/decisoes-revertidas.md) | Decisões técnicas ou de domínio que foram abandonadas e por quê | — |
+| [bugs-resolvidos.md](historico/bugs-resolvidos.md) | Registro de bugs corrigidos com causa raiz, solucao e impacto operacional | 2026-06-09 |
+| [decisoes-revertidas.md](historico/decisoes-revertidas.md) | Decisoes tecnicas ou de dominio que foram abandonadas e por que | - |
 
 ---
 
-## Síntese
+## Sintese
 
-| Página | Resumo | Atualizado |
+| Pagina | Resumo | Atualizado |
 |---|---|---|
-| [mojibake-codificacao.md](sintese/mojibake-codificacao.md) | Linha do tempo e causa da corrupção de acentuação em arquivos `.md` e `Program.cs` | 2026-06-08 |
+| [mojibake-codificacao.md](sintese/mojibake-codificacao.md) | Linha do tempo e causa da corrupcao de acentuacao em arquivos `.md` e `Program.cs` | 2026-06-08 |
 
 ---
 
-## Visão geral
+## Visao geral
 
-| Arquivo | Propósito |
+| Arquivo | Proposito |
 |---|---|
-| [overview.md](overview.md) | Síntese geral do projeto, tese atual e estado do conhecimento |
-| [log.md](log.md) | Registro cronológico de todas as operações do agente |
+| [overview.md](overview.md) | Sintese geral do projeto, tese atual e estado do conhecimento |
+| [wiki-log.md](wiki-log.md) | Registro cronologico de todas as operacoes do agente |
 
 ---
 
-*Este arquivo é mantido exclusivamente pelo agente. Não edite manualmente.*
+*Este arquivo e mantido exclusivamente pelo agente. Nao edite manualmente.*

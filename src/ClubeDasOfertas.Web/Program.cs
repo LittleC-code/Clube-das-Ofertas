@@ -178,7 +178,7 @@ app.MapPost("/setup", async (HttpContext context, AppRepository repository, IAnt
     }
 
     var account = await repository.CreateUserAsync(email, displayName, Roles.Admin, password, cancellationToken);
-    await repository.AddAuditAsync(null, account.Email, "Criou administrador inicial", "User", account.Id, "Bootstrap inicial do sistema", cancellationToken);
+    await repository.AddAuditAsync(null, account.Email, "Criou administrador inicial", "User", account.Id, "Configuração inicial do sistema", cancellationToken);
 
     var claims = new List<Claim>
     {
@@ -273,7 +273,7 @@ app.MapPost("/login", async (HttpContext context, AppRepository repository, IAnt
     };
     var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
     await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
-    await repository.AddAuditAsync(account.Id, account.Email, "Login", "User", account.Id, "Usuario entrou no sistema", cancellationToken);
+    await repository.AddAuditAsync(account.Id, account.Email, "Login", "User", account.Id, "Usuário entrou no sistema", cancellationToken);
 
     return Results.Redirect("/campaigns");
 }).AllowAnonymous();
@@ -326,7 +326,7 @@ app.MapPost("/campaigns", async (HttpContext context, AppRepository repository, 
 
     if (!TryDate(form["valid_from"].ToString(), out var validFrom) || !TryDate(form["valid_to"].ToString(), out var validTo) || validTo < validFrom)
     {
-        return RedirectWithNotice("/campaigns", "Datas invalidas para a campanha.");
+        return RedirectWithNotice("/campaigns", "Datas inválidas para a campanha.");
     }
 
     if (string.IsNullOrWhiteSpace(name))
@@ -347,7 +347,7 @@ app.MapPost("/campaigns", async (HttpContext context, AppRepository repository, 
     try
     {
         var batch = await importService.ImportAsync(campaign, file, currentUser, sheetName, cancellationToken);
-        return RedirectWithNotice($"/campaigns/{campaign.Id}", $"Campanha criada e importada: {batch.RowCount} linhas de origem da aba {sheetName}.");
+        return RedirectWithNotice($"/campaigns/{campaign.Id}", $"Campanha criada e importada: {CountLabel(batch.RowCount, "linha de origem", "linhas de origem")} da aba {sheetName}.");
     }
     catch (ImportException ex)
     {
@@ -417,7 +417,7 @@ app.MapPost("/campaigns/{id:guid}/import", async (Guid id, HttpContext context, 
     try
     {
         var batch = await importService.ImportAsync(campaign, file, currentUser, sheetName, cancellationToken);
-        return RedirectWithNotice($"/campaigns/{id}", $"Importação concluída: {batch.RowCount} linhas de origem da aba {sheetName}.");
+        return RedirectWithNotice($"/campaigns/{id}", $"Importação concluída: {CountLabel(batch.RowCount, "linha de origem", "linhas de origem")} da aba {sheetName}.");
     }
     catch (ImportException ex)
     {
@@ -530,7 +530,7 @@ app.MapPost("/campaigns/{campaignId:guid}/items/approve-all", async (Guid campai
 
     if (itemIds.Count == 0)
     {
-        return CampaignMutationError(campaignId, filter, "Nao ha itens revisaveis nesse filtro.", context);
+        return CampaignMutationError(campaignId, filter, "Não há itens revisáveis nesse filtro.", context);
     }
 
     var approved = await reviewService.ApproveManyAsync(itemIds, currentUser, form["comment"].ToString(), cancellationToken);
@@ -582,15 +582,8 @@ app.MapPost("/campaigns/{id:guid}/export", async (Guid id, HttpContext context, 
     }
 
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
-    try
-    {
-        var export = await exportService.ExportAsync(campaign, currentUser, cancellationToken);
-        return Results.Redirect($"/exports/{export.Id}/download");
-    }
-    catch (ExportBlockedException ex)
-    {
-        return RedirectWithNotice($"/campaigns/{id}", $"Exportação bloqueada: {ex.BlockedItems.Count} item(ns) com pendências.");
-    }
+    var export = await exportService.ExportAsync(campaign, currentUser, cancellationToken);
+    return Results.Redirect($"/exports/{export.Id}/download");
 }).RequireAuthorization();
 
 app.MapGet("/exports/{id:guid}/download", async (Guid id, AppRepository repository, CancellationToken cancellationToken) =>
@@ -611,7 +604,7 @@ app.MapGet("/catalog", async (string? q, string? category, HttpContext context, 
     var categories = await repository.ListCatalogCategoriesAsync(cancellationToken);
     var antiForgeryField = AntiForgeryField(antiforgery, context);
     var body = RenderCatalog(entries, categories, q ?? "", category ?? "", antiForgeryField);
-    return HtmlView.Page("Catálogo", context.User, body, Notice(context.Request), antiForgeryField, pageClass: "page-campaign", headerTitle: "Catálogo");
+    return HtmlView.Page("Catálogo de produtos", context.User, body, Notice(context.Request), antiForgeryField, pageClass: "page-campaign", headerTitle: "Catálogo de produtos");
 }).RequireAuthorization("AdminOnly");
 
 app.MapPost("/catalog/import", async (HttpContext context, AppRepository repository, SpreadsheetImporter importer, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
@@ -638,7 +631,7 @@ app.MapPost("/catalog/import", async (HttpContext context, AppRepository reposit
     {
         var rows = await importer.ReadCatalogRowsAsync(file, cancellationToken);
         var count = await repository.UpsertCatalogAsync(rows, cancellationToken);
-        await repository.AddAuditAsync(currentUser.Id, currentUser.Email, "Importou catalogo", "ProductCatalog", null, $"{file.FileName} ({count} registros)", cancellationToken);
+        await repository.AddAuditAsync(currentUser.Id, currentUser.Email, "Importou catálogo", "ProductCatalog", null, $"{file.FileName} ({count} registros)", cancellationToken);
         return RedirectWithNotice("/catalog", $"Catálogo importado/atualizado: {count} registros.");
     }
     catch (ImportException ex)
@@ -669,7 +662,7 @@ app.MapPost("/rules", async (HttpContext context, AppRepository repository, IAnt
 
     if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(pattern))
     {
-        return RedirectWithNotice("/rules", "Nome, tipo e padrao sao obrigatorios.");
+        return RedirectWithNotice("/rules", "Nome, tipo e padrão são obrigatórios.");
     }
 
     if (!Parsing.TryMoney(multiplierText, out var multiplier) || multiplier <= 0m)
@@ -690,7 +683,7 @@ app.MapPost("/rules/{id:guid}/save", async (Guid id, HttpContext context, AppRep
     var existingRule = await repository.GetRuleAsync(id, cancellationToken);
     if (existingRule is null)
     {
-        return RedirectWithNotice("/rules", "Regra nao encontrada.");
+        return RedirectWithNotice("/rules", "Regra não encontrada.");
     }
 
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
@@ -705,7 +698,7 @@ app.MapPost("/rules/{id:guid}/save", async (Guid id, HttpContext context, AppRep
 
     if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(pattern))
     {
-        return RedirectWithNotice("/rules", "Nome, tipo e padrao sao obrigatorios.");
+        return RedirectWithNotice("/rules", "Nome, tipo e padrão são obrigatórios.");
     }
 
     if (!Parsing.TryMoney(multiplierText, out var multiplier) || multiplier <= 0m)
@@ -754,13 +747,12 @@ static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, Campaign
 {
     var body = new StringBuilder();
     body.AppendLine("""
-<h1>Campanhas</h1>
 <div class="campaign-shell">
-  <section class="panel">
+  <section class="panel catalog-results-panel">
     <div class="panel-header">
       <div>
         <h2>Nova campanha</h2>
-        <p class="panel-subtitle">Crie a campanha e, se quiser, ja anexe o arquivo inicial para importar os itens na mesma etapa.</p>
+        <p class="panel-subtitle">Crie a campanha e, se quiser, já anexe o arquivo inicial para importar os itens na mesma etapa.</p>
       </div>
     </div>
     <form method="post" action="/campaigns" enctype="multipart/form-data" data-sheet-selector-form>
@@ -795,25 +787,25 @@ static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, Campaign
       </div>
       <div class="form-actions">
         <button type="submit">Criar campanha</button>
-        <span class="muted">Aceita CSV, XLSX ou XLSM de ate 10 MB.</span>
+        <span class="muted">Aceita CSV, XLSX ou XLSM de até 10 MB.</span>
       </div>
     </form>
   </section>
-  <section class="panel">
+  <section class="panel catalog-results-panel">
     <div class="panel-header">
       <div>
         <h2>Campanhas criadas</h2>
         <p class="panel-subtitle">Acompanhe a vigência, o status operacional e o volume de pendências sem precisar abrir cada campanha primeiro.</p>
       </div>
 """);
-    body.AppendLine($"""      {HtmlView.Badge($"{campaigns.Count} campanha(s)", campaigns.Count == 0 ? "" : "info")}""");
+    body.AppendLine($"""      {HtmlView.Badge(CountLabel(campaigns.Count, "campanha", "campanhas"), campaigns.Count == 0 ? "" : "info")}""");
     body.AppendLine("""
     </div>
 """);
 
     if (campaigns.Count == 0)
     {
-        body.AppendLine("""    <div class="empty-state">Nenhuma campanha criada ainda. Use o formulario ao lado para abrir a primeira campanha e, se quiser, ja importar o arquivo inicial.</div>""");
+        body.AppendLine("""    <div class="empty-state">Nenhuma campanha criada ainda. Use o formulário ao lado para abrir a primeira campanha e, se quiser, já importar o arquivo inicial.</div>""");
         body.AppendLine("  </section>");
         body.AppendLine("</div>");
         return body.ToString();
@@ -826,7 +818,7 @@ static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, Campaign
         <div>Vigência</div>
         <div>Status</div>
         <div>Itens</div>
-        <div>Pendencias</div>
+        <div>Pendências</div>
         <div></div>
       </div>
 """);
@@ -835,7 +827,7 @@ static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, Campaign
     {
         var pendingHtml = entry.Stats.BlockingItems == 0
             ? HtmlView.Badge("Sem pendências", "ok")
-            : HtmlView.Badge($"{entry.Stats.BlockingItems} pendência(s)", entry.Stats.BlockingItems >= 10 ? "danger" : "warn");
+            : HtmlView.Badge(CountLabel(entry.Stats.BlockingItems, "pendência", "pendências"), entry.Stats.BlockingItems >= 10 ? "danger" : "warn");
 
         body.AppendLine($"""
       <article class="campaign-row">
@@ -853,7 +845,7 @@ static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, Campaign
           <span class="muted">itens carregados</span>
         </div>
         <div class="campaign-cell" data-label="Pendências">{pendingHtml}</div>
-        <div class="campaign-cell campaign-action" data-label="Acoes">
+        <div class="campaign-cell campaign-action" data-label="Ações">
           <div class="inline-actions">
             <a class="button secondary" href="/campaigns/{entry.Campaign.Id}">Abrir</a>
             <form method="post" action="/campaigns/{entry.Campaign.Id}/delete" onsubmit="return confirm('Excluir esta campanha? Essa ação remove itens, revisões e exportações ligadas a ela.');">
@@ -880,11 +872,18 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
     var normalizedFilter = NormalizeFilter(filter);
     var filterField = $"""<input type="hidden" name="filter" value="{HtmlView.E(normalizedFilter)}">""";
     var visibleReviewableItems = items.Count(IsReviewableItem);
+    var exportWarning = stats.BlockingItems > 0
+        ? $"""<div class="toolbar-note">{HtmlView.Badge($"{CountLabel(stats.BlockingItems, "item", "itens")} com pendências serão exportados com riscos e pendências no CSV.", "danger")}</div>"""
+        : "";
+    var exportConfirm = stats.BlockingItems > 0
+        ? $""" onsubmit="return confirm('Esta campanha possui {CountLabel(stats.BlockingItems, "item", "itens")} com pendências. O CSV será exportado mesmo assim, incluindo riscos e pendências. Deseja continuar?');" """
+        : "";
+    var exportLabel = stats.BlockingItems > 0 ? "Exportar CSV com pendências" : "Exportar CSV";
     var exportButton = stats.TotalItems > 0
         ? $"""
-<form method="post" action="/campaigns/{campaign.Id}/export">
+<form method="post" action="/campaigns/{campaign.Id}/export"{exportConfirm}>
   {antiForgeryField}
-  <button type="submit">Exportar CSV</button>
+  <button type="submit">{exportLabel}</button>
 </form>
 """
         : """<span class="button secondary">Sem itens para exportar</span>""";
@@ -894,7 +893,7 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
   {antiForgeryField}
   {filterField}
   <input type="hidden" name="comment" value="">
-  <button class="secondary" type="submit" data-busy-label="Confirmando...">Confirmar todos visiveis</button>
+  <button class="secondary" type="submit" data-busy-label="Confirmando...">Confirmar todos os itens visíveis</button>
 </form>
 """
         : "";
@@ -902,26 +901,22 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
     var body = new StringBuilder();
     body.AppendLine($"""
 <h1>{HtmlView.E(campaign.Name)}</h1>
+<p class="panel-subtitle campaign-vigency-note">Vigência: {campaign.ValidFrom:dd/MM/yyyy} a {campaign.ValidTo:dd/MM/yyyy} ({DaysBetween(campaign.ValidFrom, campaign.ValidTo)})</p>
 <div id="campaign-stats">{RenderCampaignStats(stats)}</div>
 <section class="panel">
   <div class="panel-header">
     <div>
-      <h2>Importar e revisar itens</h2>
-      <p class="panel-subtitle">Corrija descrição, código de barras, quantidade e preço diretamente aqui quando precisar ajustar um item sem reimportar a planilha inteira.</p>
+      <h2>Revisar e exportar itens</h2>
+      <p class="panel-subtitle">Corrija descrição, código de barras, quantidade e preço diretamente aqui quando precisar ajustar um item antes da exportação.</p>
     </div>
   </div>
-  <form method="post" action="/campaigns/{campaign.Id}/import" enctype="multipart/form-data" data-sheet-selector-form>
-    {antiForgeryField}
-    <div class="field"><label>Arquivo CSV, XLSX ou XLSM com layout fixo</label><input type="file" name="file" accept=".csv,.txt,.xlsx,.xlsm" data-sheet-file required></div>
-    <div class="field"><label>Aba da planilha para importar</label><select name="sheet_name" data-sheet-select><option value="Base Clube - CLT">Base Clube - CLT</option></select><p class="hint" data-sheet-hint>Escolha o arquivo para listar as abas disponíveis e importar a campanha já gerada dentro da planilha.</p></div>
-    <button type="submit">Importar e validar</button>
-  </form>
   <div class="toolbar">{exportButton}{approveAllButton}</div>
+  {exportWarning}
 </section>
 <div class="toolbar">
   <a class="{FilterButtonClass("", normalizedFilter)}" href="/campaigns/{campaign.Id}">Todos</a>
   <a class="{FilterButtonClass("bloqueado", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=bloqueado">Bloqueados</a>
-  <a class="{FilterButtonClass("pendente", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=pendente">Revisao</a>
+  <a class="{FilterButtonClass("pendente", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=pendente">Revisão</a>
   <a class="{FilterButtonClass("sem-codigo", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=sem-codigo">Sem código</a>
   <a class="{FilterButtonClass("pesavel", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=pesavel">Pesáveis</a>
   <a class="{FilterButtonClass("fardo", normalizedFilter)}" href="/campaigns/{campaign.Id}?filter=fardo">Fardos/caixas</a>
@@ -932,8 +927,8 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
 <table>
   <thead>
     <tr>
-      <th>Status</th><th>Riscos</th><th>Linha</th><th>Descrição tabloide</th><th>Descrição Solidus</th>
-      <th>Código</th><th>Preço original</th><th>Preço final</th><th>Qtd.</th><th>Pendências</th><th>Ações</th>
+      <th>Status</th><th>Fonte</th><th>Riscos</th><th>Linha</th><th>Descrição tabloide</th><th>Descrição Solidus</th>
+      <th>Código</th><th>Preço original</th><th>Preço final e quantidade</th><th>Pendências</th>
     </tr>
   </thead>
   <tbody id="campaign-items-body">
@@ -1038,9 +1033,9 @@ static string RenderCampaignStats(CampaignStats stats)
 <div class="stats">
   <div class="stat"><strong>{stats.TotalItems}</strong><span>Itens</span></div>
   <div class="stat"><strong>{stats.BlockingItems}</strong><span>Bloqueados</span></div>
-  <div class="stat"><strong>{stats.PendingReviewItems}</strong><span>Revisao</span></div>
+  <div class="stat"><strong>{stats.PendingReviewItems}</strong><span>Revisão</span></div>
   <div class="stat"><strong>{stats.MissingCodeItems}</strong><span>Sem código</span></div>
-  <div class="stat"><strong>{stats.WeightedItems}</strong><span>Pesaveis</span></div>
+  <div class="stat"><strong>{stats.WeightedItems}</strong><span>Pesáveis</span></div>
   <div class="stat"><strong>{stats.PackageItems}</strong><span>Fardos/caixas</span></div>
 </div>
 """;
@@ -1052,7 +1047,7 @@ static string RenderCampaignItemsTableBody(Campaign campaign, IReadOnlyList<Camp
 
     if (items.Count == 0)
     {
-        body.AppendLine("""<tr><td colspan="11" class="muted">Nenhum item para exibir nesse filtro.</td></tr>""");
+        body.AppendLine("""<tr><td colspan="10" class="muted">Nenhum item para exibir nesse filtro.</td></tr>""");
         return body.ToString();
     }
 
@@ -1070,7 +1065,7 @@ static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, strin
     var canReview = IsReviewableItem(item);
     var needsPackageMathHint = NeedsPackageMathHint(item);
     var packageMathHint = needsPackageMathHint
-        ? "Para itens de fardos e caixas, você pode informar apenas \"Caixas\" ou \"Fardos\" na quantidade. Quando houver conta, use divisao na quantidade, como 20/6, e multiplicacao nos precos, como 13,98*6."
+        ? "Para itens de fardos e caixas, você pode informar apenas \"Caixas\" ou \"Fardos\" na quantidade. Quando houver conta, use divisão na quantidade, como 20/6, e multiplicação nos preços, como 13,98*6."
         : "Se a descrição corrigida bater exatamente com o catálogo, o sistema tenta preencher o código automaticamente.";
     var priceSaleInputValue = string.IsNullOrWhiteSpace(item.PriceSaleRaw)
         ? Parsing.MoneyPtBr(item.FinalPriceSale)
@@ -1078,9 +1073,8 @@ static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, strin
     var priceClubInputValue = string.IsNullOrWhiteSpace(item.PriceClubRaw)
         ? Parsing.MoneyPtBr(item.FinalPriceClub)
         : item.PriceClubRaw;
-    var actions = canReview
+    var actionButtons = canReview
         ? $"""
-<div class="inline-actions">
   <form method="post" action="/campaigns/{campaign.Id}/items/{item.Id}/approve" class="async-campaign-form">
     {antiForgeryField}
     {filterField}
@@ -1094,31 +1088,47 @@ static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, strin
     <button class="danger" type="submit" data-busy-label="Rejeitando...">Rejeitar</button>
   </form>
   <button class="ghost" type="button" data-edit-toggle="edit-{item.Id}">Editar</button>
-</div>
 """
         : $"""
-<div class="inline-actions">
-  <span class="muted">Sem revisão pendente</span>
   <button class="ghost" type="button" data-edit-toggle="edit-{item.Id}">Editar</button>
+""";
+    var solidusDetails = $"""
+<div class="campaign-description-stack">
+  <div>{HtmlView.E(item.DescriptionSolidus)}</div>
+  <div class="inline-actions campaign-item-actions">
+    {actionButtons}
+  </div>
+</div>
+""";
+    var originalPriceDetails = $"""
+<div class="campaign-price-stack campaign-price-stack-compact">
+  <div>Venda: {Parsing.MoneyPtBr(item.OriginalPriceSale)}</div>
+  <div>Clube: {Parsing.MoneyPtBr(item.OriginalPriceClub)}</div>
+</div>
+""";
+    var finalPriceDetails = $"""
+<div class="campaign-price-stack">
+  <div><strong>Venda:</strong> {Parsing.MoneyPtBr(item.FinalPriceSale)}</div>
+  <div><strong>Clube:</strong> {Parsing.MoneyPtBr(item.FinalPriceClub)}</div>
+  <div class="muted"><strong>Qtd.:</strong> {item.Quantity:0.###} {HtmlView.E(item.Unit)}</div>
 </div>
 """;
 
     return $"""
 <tr id="item-{item.Id}">
   <td>{HtmlView.StatusBadge(item)}</td>
-  <td>{HtmlView.Badges(item.RiskFlags)}</td>
+  <td>{HtmlView.SourceBadge(item.Source)}</td>
+  <td class="campaign-risks-cell">{HtmlView.Badges(item.RiskFlags)}</td>
   <td>{item.SourceRow}</td>
-  <td>{HtmlView.E(item.DescriptionTabloid)}<br><span class="muted">{HtmlView.E(item.Source)}</span></td>
-  <td>{HtmlView.E(item.DescriptionSolidus)}</td>
+  <td class="campaign-description-cell">{HtmlView.E(item.DescriptionTabloid)}</td>
+  <td class="campaign-description-cell">{solidusDetails}</td>
   <td class="mono">{HtmlView.E(item.Barcode)}</td>
-  <td>{Parsing.MoneyPtBr(item.OriginalPriceSale)} / {Parsing.MoneyPtBr(item.OriginalPriceClub)}</td>
-  <td><strong>{Parsing.MoneyPtBr(item.FinalPriceSale)} / {Parsing.MoneyPtBr(item.FinalPriceClub)}</strong></td>
-  <td>{item.Quantity:0.###} {HtmlView.E(item.Unit)}</td>
+  <td>{originalPriceDetails}</td>
+  <td>{finalPriceDetails}</td>
   <td>{HtmlView.Badges(item.BlockingReasons)}</td>
-  <td>{actions}</td>
 </tr>
 <tr class="item-edit-row" id="edit-{item.Id}" hidden>
-  <td colspan="11">
+  <td colspan="10">
     <div class="item-edit-card">
       <form method="post" action="/campaigns/{campaign.Id}/items/{item.Id}/save" class="async-campaign-form"{(needsPackageMathHint ? " data-package-math-form" : "")}>
         {antiForgeryField}
@@ -1180,7 +1190,6 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
     var totalCatalogItems = categories.Sum(x => x.Count);
     var body = new StringBuilder();
     body.AppendLine($$"""
-<h1>Catálogo de produtos</h1>
 <div class="catalog-layout">
   <aside class="panel catalog-sidebar">
     <div class="panel-header">
@@ -1192,11 +1201,11 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
     <div class="catalog-sidebar-section">
       <div class="catalog-summary">
         <strong>{{entries.Count}}</strong>
-        <span>itens visiveis</span>
+        <span>itens visíveis</span>
       </div>
       <div class="catalog-summary">
         <strong>{{totalCatalogItems}}</strong>
-        <span>itens no catalogo</span>
+        <span>itens no catálogo</span>
       </div>
       <div class="catalog-summary">
         <strong>{{categories.Count}}</strong>
@@ -1207,24 +1216,9 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
       <h2>Importar base de códigos</h2>
     <form method="post" action="/catalog/import" enctype="multipart/form-data">
       {{antiForgeryField}}
-      <div class="field"><label>Arquivo com aba Base - Cod Barras ou CSV equivalente</label><input type="file" name="file" accept=".csv,.txt,.xlsx,.xlsm" required></div>
-      <button type="submit">Importar catalogo</button>
+      <div class="field"><label>Arquivo com a aba Base - Cód. Barras ou CSV equivalente</label><input type="file" name="file" accept=".csv,.txt,.xlsx,.xlsm" required></div>
+      <button type="submit">Importar catálogo</button>
     </form>
-    </div>
-    <div class="catalog-sidebar-section">
-      <h2>Buscar</h2>
-      <form method="get" action="/catalog">
-      <div class="field"><label>Descrição, Solidus ou código</label><input name="q" value="
-""");
-    body.Append(HtmlView.E(query));
-    body.AppendLine($$"""
-"></div>
-      <input type="hidden" name="category" value="{{HtmlView.E(selectedCategory)}}">
-      <div class="form-actions">
-        <button type="submit">Buscar</button>
-        <a class="button secondary" href="/catalog">Limpar</a>
-      </div>
-      </form>
     </div>
     <div class="catalog-sidebar-section">
       <h2>Categorias</h2>
@@ -1249,14 +1243,26 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
       </div>
     </div>
   </aside>
-  <section class="panel">
+  <section class="panel catalog-results-panel">
     <div class="panel-header">
       <div>
         <h2>Itens do catálogo</h2>
         <p class="panel-subtitle">Categoria atual: {{HtmlView.E(selectedCategoryLabel)}}.</p>
       </div>
-      {{HtmlView.Badge($"{entries.Count} item(ns)", entries.Count == 0 ? "" : "info")}}
+      {{HtmlView.Badge(CountLabel(entries.Count, "item", "itens"), entries.Count == 0 ? "" : "info")}}
     </div>
+    <form method="get" action="/catalog" class="catalog-search-form">
+      <div class="field"><label>Descrição, Solidus ou código</label><input name="q" value="
+""");
+    body.Append(HtmlView.E(query));
+    body.AppendLine($$"""
+"></div>
+      <input type="hidden" name="category" value="{{HtmlView.E(selectedCategory)}}">
+      <div class="form-actions">
+        <button type="submit">Buscar</button>
+        <a class="button secondary" href="/catalog">Limpar</a>
+      </div>
+    </form>
     <div class="catalog-list-shell">
       <div class="catalog-list">
 """);
@@ -1272,7 +1278,7 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
         <div class="catalog-item-meta">
           <div><label>Categoria</label><span>{HtmlView.E(string.IsNullOrWhiteSpace(entry.Category) ? "Sem categoria" : entry.Category)}</span></div>
           <div><label>Código</label><span class="mono">{HtmlView.E(entry.Barcode)}</span></div>
-          <div><label>Tipo</label><span>{HtmlView.E(entry.CodeType)}</span></div>
+          <div><label>Tipo</label><span>{HtmlView.E(DisplayCatalogCodeType(entry.CodeType))}</span></div>
         </div>
       </article>
 """);
@@ -1286,7 +1292,6 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
     body.AppendLine("""
       </div>
     </div>
-    </div>
   </section>
 </div>
 """);
@@ -1297,7 +1302,6 @@ static string RenderRules(IReadOnlyList<ConversionRule> rules, string antiForger
 {
     var body = new StringBuilder();
     body.AppendLine($$"""
-<h1>Regras de convers&atilde;o</h1>
 <div class="grid two">
   <section class="panel">
     <h2>Nova regra</h2>
@@ -1305,7 +1309,7 @@ static string RenderRules(IReadOnlyList<ConversionRule> rules, string antiForger
       {{antiForgeryField}}
       <div class="field"><label>Nome</label><input name="name" required></div>
       <div class="field"><label>Tipo</label><select name="rule_type"><option value="Pesavel">Pes&aacute;vel</option><option value="Fardo">Fardo</option><option value="Caixa">Caixa</option></select></div>
-      <div class="field"><label>Padr&atilde;o Regex ou texto</label><input name="pattern" required></div>
+      <div class="field"><label>Padr&atilde;o regex ou texto</label><input name="pattern" required></div>
       <div class="field"><label>Multiplicador</label><input name="multiplier" value="1"></div>
       <div class="field"><label>Unidade alvo</label><input name="target_unit" placeholder="Kg"></div>
       <div class="field"><label>Categorias alvo</label><input name="category_scope" placeholder="Ex.: Hortifruti, Bebidas"><p class="hint">Opcional. Informe uma ou mais categorias separadas por v&iacute;rgula para restringir a regra.</p></div>
@@ -1325,7 +1329,7 @@ static string RenderRules(IReadOnlyList<ConversionRule> rules, string antiForger
         body.AppendLine($"""
 <tr>
   <td>{HtmlView.Badge(rule.IsActive ? "Ativa" : "Inativa", rule.IsActive ? "ok" : "")}</td>
-  <td>{HtmlView.E(rule.Name)}</td>
+  <td>{HtmlView.E(DisplayRuleName(rule.Name))}</td>
   <td>{HtmlView.E(DisplayRuleType(rule.RuleType))}</td>
   <td class="mono">{HtmlView.E(rule.Pattern)}</td>
   <td>{rule.Multiplier:0.####}</td>
@@ -1347,7 +1351,7 @@ static string RenderRules(IReadOnlyList<ConversionRule> rules, string antiForger
         <div class="item-edit-grid">
           <div class="field span-2">
             <label>Nome</label>
-            <input name="name" value="{HtmlView.E(rule.Name)}" required>
+            <input name="name" value="{HtmlView.E(DisplayRuleName(rule.Name))}" required>
           </div>
           <div class="field">
             <label>Tipo</label>
@@ -1356,7 +1360,7 @@ static string RenderRules(IReadOnlyList<ConversionRule> rules, string antiForger
             </select>
           </div>
           <div class="field span-2">
-            <label>Padr&atilde;o Regex ou texto</label>
+            <label>Padr&atilde;o regex ou texto</label>
             <input name="pattern" value="{HtmlView.E(rule.Pattern)}" required>
           </div>
           <div class="field">
@@ -1419,7 +1423,6 @@ static string RenderRuleTypeOption(string ruleType, string selectedRuleType)
 static string RenderHistory(IReadOnlyList<ExportBatch> exports, IReadOnlyList<AuditLog> logs)
 {
     var body = new StringBuilder();
-    body.AppendLine("<h1>Histórico</h1>");
     body.AppendLine("""
 <section class="panel">
   <h2>Exportações</h2>
@@ -1440,12 +1443,12 @@ static string RenderHistory(IReadOnlyList<ExportBatch> exports, IReadOnlyList<Au
     body.AppendLine("""
 <section class="panel" style="margin-top:16px">
   <h2>Auditoria</h2>
-  <div class="tablewrap"><table><thead><tr><th>Data</th><th>Usuario</th><th>Acao</th><th>Entidade</th><th>Detalhes</th></tr></thead><tbody>
+  <div class="tablewrap"><table><thead><tr><th>Data</th><th>Usuário</th><th>Ação</th><th>Entidade</th><th>Detalhes</th></tr></thead><tbody>
 """);
 
     foreach (var log in logs)
     {
-        body.AppendLine($"""<tr><td>{log.CreatedAt:dd/MM/yyyy HH:mm}</td><td>{HtmlView.E(log.ActorEmail)}</td><td>{HtmlView.E(log.Action)}</td><td>{HtmlView.E(log.EntityType)}</td><td>{HtmlView.E(log.Details)}</td></tr>""");
+        body.AppendLine($"""<tr><td>{log.CreatedAt:dd/MM/yyyy HH:mm}</td><td>{HtmlView.E(log.ActorEmail)}</td><td>{HtmlView.E(DisplayAuditAction(log.Action))}</td><td>{HtmlView.E(DisplayAuditEntityType(log.EntityType))}</td><td>{HtmlView.E(DisplayAuditDetails(log.Details))}</td></tr>""");
     }
 
     if (logs.Count == 0)
@@ -1594,8 +1597,17 @@ static string NormalizeFilter(string? filter)
 
 static string DisplayFilter(string? filter)
 {
-    var normalized = NormalizeFilter(filter);
-    return string.IsNullOrWhiteSpace(normalized) ? "todos" : normalized;
+    return NormalizeFilter(filter) switch
+    {
+        "" => "Todos",
+        "bloqueado" => "Bloqueados",
+        "pendente" => "Revisão",
+        "sem-codigo" => "Sem código",
+        "pesavel" => "Pesáveis",
+        "fardo" => "Fardos/caixas",
+        "duplicado" => "Duplicidade",
+        var normalized => normalized
+    };
 }
 
 static string FilterButtonClass(string expectedFilter, string currentFilter)
@@ -1609,6 +1621,64 @@ static string CampaignSheetName(IFormCollection form)
     return string.IsNullOrWhiteSpace(sheetName)
         ? SpreadsheetImporter.DefaultCampaignSheetName
         : sheetName;
+}
+
+static string CountLabel(int count, string singular, string plural)
+{
+    return $"{count} {(count == 1 ? singular : plural)}";
+}
+
+static string DisplayCatalogCodeType(string codeType)
+{
+    return codeType switch
+    {
+        "Codigo Unificado" => "Código unificado",
+        _ => codeType
+    };
+}
+
+static string DisplayRuleName(string ruleName)
+{
+    return ruleName switch
+    {
+        "Pesaveis e cada 100g" => "Pesáveis e cada 100 g",
+        _ => ruleName
+    };
+}
+
+static string DisplayAuditAction(string action)
+{
+    return action switch
+    {
+        "Importou catalogo" => "Importou catálogo",
+        "Aprovou revisao" => "Aprovou revisão",
+        "Rejeitou revisao" => "Rejeitou revisão",
+        _ => action
+    };
+}
+
+static string DisplayAuditEntityType(string entityType)
+{
+    return entityType switch
+    {
+        "User" => "Usuário",
+        "Campaign" => "Campanha",
+        "CampaignItem" => "Item da campanha",
+        "ProductCatalog" => "Catálogo",
+        "ConversionRule" => "Regra de conversão",
+        _ => entityType
+    };
+}
+
+static string DisplayAuditDetails(string details)
+{
+    return details switch
+    {
+        "Bootstrap inicial do sistema" => "Configuração inicial do sistema",
+        "Usuario entrou no sistema" => "Usuário entrou no sistema",
+        "Ativar/desativar" => "Ativar ou desativar",
+        var value => DisplayRuleName(value)
+    };
 }
 
 static bool IsWorkbookFile(string fileName)

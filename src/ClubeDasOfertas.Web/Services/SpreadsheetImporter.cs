@@ -21,7 +21,7 @@ public sealed partial class SpreadsheetImporter
         var headerIndex = FindHeaderRow(rows, "DESCRICAO NO TABLOIDE", "VENDA CLUBE");
         if (headerIndex < 0)
         {
-            throw new ImportException("Nao encontrei o cabecalho esperado: Fonte, Vigencia, Descricao no Tabloide, Quantidade limitada, Venda, Venda Clube.");
+            throw new ImportException("Não encontrei o cabeçalho esperado: Fonte, Vigência, Descrição no Tabloide, Quantidade limitada, Venda, Venda Clube.");
         }
 
         var header = rows[headerIndex].Select(TextNormalizer.NormalizeKey).ToList();
@@ -61,7 +61,7 @@ public sealed partial class SpreadsheetImporter
         var headerIndex = FindHeaderRow(rows, "DESCRICAO TABLOIDE", "COD BARRAS");
         if (headerIndex < 0)
         {
-            throw new ImportException("Nao encontrei o cabecalho esperado do catalogo: Descricao Tabloide, Categoria, Descricao Solidus, Cod Barras.");
+            throw new ImportException("Não encontrei o cabeçalho esperado do catálogo: Descrição Tabloide, Categoria, Descrição Solidus, Cód. Barras.");
         }
 
         var header = rows[headerIndex].Select(TextNormalizer.NormalizeKey).ToList();
@@ -162,7 +162,7 @@ public sealed partial class SpreadsheetImporter
             return ReadCsv(memory);
         }
 
-        throw new ImportException("Formato nao suportado. Use CSV, XLSX ou XLSM.");
+        throw new ImportException("Formato não suportado. Use CSV, XLSX ou XLSM.");
     }
 
     private static IReadOnlyList<IReadOnlyList<string>> ReadCsv(Stream stream)
@@ -240,14 +240,22 @@ public sealed partial class SpreadsheetImporter
             using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
             var sharedStrings = ReadSharedStrings(archive);
             var selection = ResolveSheetSelection(archive, preferredSheet);
-            var sheetEntry = archive.GetEntry(selection.Path) ?? throw new ImportException($"A aba '{selection.Name}' nao foi encontrada no arquivo.");
+            var sheetEntry = archive.GetEntry(selection.Path) ?? throw new ImportException($"A aba '{selection.Name}' não foi encontrada no arquivo.");
 
             using var sheetStream = sheetEntry.Open();
             var sheet = LoadXml(sheetStream);
-            var rows = new List<IReadOnlyList<string>>();
+            var rows = new List<string[]>();
 
             foreach (var rowElement in sheet.Descendants().Where(x => x.Name.LocalName == "row"))
             {
+                var rowNumber = int.TryParse((string?)rowElement.Attribute("r"), out var parsedRowNumber) && parsedRowNumber > 0
+                    ? parsedRowNumber
+                    : rows.Count + 1;
+                while (rows.Count < rowNumber - 1)
+                {
+                    rows.Add(Array.Empty<string>());
+                }
+
                 var cells = new Dictionary<int, string>();
                 foreach (var cellElement in rowElement.Elements().Where(x => x.Name.LocalName == "c"))
                 {
@@ -277,7 +285,8 @@ public sealed partial class SpreadsheetImporter
                 rows.Add(values);
             }
 
-            return rows;
+            ApplyMergedCellValues(sheet, rows);
+            return rows.Select(row => (IReadOnlyList<string>)row).ToList();
         }
         catch (InvalidDataException)
         {
@@ -285,7 +294,7 @@ public sealed partial class SpreadsheetImporter
         }
         catch (XmlException)
         {
-            throw new ImportException("O conteudo XML do arquivo esta invalido ou corrompido.");
+            throw new ImportException("O conteúdo XML do arquivo está inválido ou corrompido.");
         }
     }
 
@@ -321,7 +330,7 @@ public sealed partial class SpreadsheetImporter
         }
         catch (XmlException)
         {
-            throw new ImportException("O conteudo XML do arquivo esta invalido ou corrompido.");
+            throw new ImportException("O conteúdo XML do arquivo está inválido ou corrompido.");
         }
     }
 
@@ -341,7 +350,7 @@ public sealed partial class SpreadsheetImporter
             if (matchIndex < 0)
             {
                 var availableSheets = string.Join(", ", sheets.Select(x => x.Name));
-                throw new ImportException($"A aba '{preferredSheet}' nao foi encontrada. Abas disponiveis: {availableSheets}.");
+                throw new ImportException($"A aba '{preferredSheet}' não foi encontrada. Abas disponíveis: {availableSheets}.");
             }
 
             selected = sheets[matchIndex];
@@ -355,7 +364,7 @@ public sealed partial class SpreadsheetImporter
 
         if (string.IsNullOrWhiteSpace(target))
         {
-            throw new ImportException($"Nao foi possivel resolver a aba '{selected.Name}'.");
+            throw new ImportException($"Não foi possível resolver a aba '{selected.Name}'.");
         }
 
         target = target.Replace('\\', '/').TrimStart('/');
@@ -404,6 +413,38 @@ public sealed partial class SpreadsheetImporter
         return raw.Trim();
     }
 
+    private static void ApplyMergedCellValues(XDocument sheet, List<string[]> rows)
+    {
+        foreach (var mergeReference in sheet.Descendants()
+                     .Where(x => x.Name.LocalName == "mergeCell")
+                     .Select(x => (string?)x.Attribute("ref"))
+                     .Where(x => !string.IsNullOrWhiteSpace(x)))
+        {
+            if (!TryParseRange(mergeReference!, out var startRow, out var startColumn, out var endRow, out var endColumn))
+            {
+                continue;
+            }
+
+            var topLeftValue = GetCellValue(rows, startRow, startColumn);
+            if (string.IsNullOrWhiteSpace(topLeftValue))
+            {
+                continue;
+            }
+
+            for (var row = startRow; row <= endRow; row++)
+            {
+                EnsureRowCapacity(rows, row, endColumn);
+                for (var column = startColumn; column <= endColumn; column++)
+                {
+                    if (string.IsNullOrWhiteSpace(rows[row - 1][column - 1]))
+                    {
+                        rows[row - 1][column - 1] = topLeftValue;
+                    }
+                }
+            }
+        }
+    }
+
     private static int ColumnIndex(string reference)
     {
         var match = ColumnLetters().Match(reference);
@@ -440,7 +481,7 @@ public sealed partial class SpreadsheetImporter
         var index = OptionalColumn(header, name);
         if (index < 0)
         {
-            throw new ImportException($"Coluna obrigatoria ausente: {name}.");
+            throw new ImportException($"Coluna obrigatória ausente: {name}.");
         }
 
         return index;
@@ -464,6 +505,87 @@ public sealed partial class SpreadsheetImporter
         return index >= 0 && index < row.Count ? row[index].Trim() : "";
     }
 
+    private static string GetCellValue(List<string[]> rows, int row, int column)
+    {
+        if (row <= 0 || row > rows.Count)
+        {
+            return "";
+        }
+
+        var cells = rows[row - 1];
+        return column > 0 && column <= cells.Length ? cells[column - 1] ?? "" : "";
+    }
+
+    private static void EnsureRowCapacity(List<string[]> rows, int row, int columnCount)
+    {
+        while (rows.Count < row)
+        {
+            rows.Add(Array.Empty<string>());
+        }
+
+        var values = rows[row - 1];
+        if (values.Length >= columnCount)
+        {
+            return;
+        }
+
+        var originalLength = values.Length;
+        Array.Resize(ref values, columnCount);
+        for (var i = originalLength; i < values.Length; i++)
+        {
+            values[i] = "";
+        }
+
+        rows[row - 1] = values;
+    }
+
+    private static bool TryParseRange(string reference, out int startRow, out int startColumn, out int endRow, out int endColumn)
+    {
+        startRow = 0;
+        startColumn = 0;
+        endRow = 0;
+        endColumn = 0;
+
+        var parts = reference.Split(':', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0 || parts.Length > 2)
+        {
+            return false;
+        }
+
+        if (!TryParseCellReference(parts[0], out startRow, out startColumn))
+        {
+            return false;
+        }
+
+        if (parts.Length == 1)
+        {
+            endRow = startRow;
+            endColumn = startColumn;
+            return true;
+        }
+
+        if (!TryParseCellReference(parts[1], out endRow, out endColumn))
+        {
+            return false;
+        }
+
+        return endRow >= startRow && endColumn >= startColumn;
+    }
+
+    private static bool TryParseCellReference(string reference, out int row, out int column)
+    {
+        row = 0;
+        column = ColumnIndex(reference);
+        if (column <= 0)
+        {
+            return false;
+        }
+
+        var letters = ColumnLetters().Match(reference).Value;
+        var numberPart = reference[letters.Length..];
+        return int.TryParse(numberPart, out row) && row > 0;
+    }
+
     private static void EnsureZipSignature(Stream stream)
     {
         var header = new byte[4];
@@ -475,7 +597,7 @@ public sealed partial class SpreadsheetImporter
 
         if (!isZip)
         {
-            throw new ImportException("O arquivo informado nao possui assinatura valida de XLSX/XLSM.");
+            throw new ImportException("O arquivo informado não possui assinatura válida de XLSX/XLSM.");
         }
     }
 
@@ -486,7 +608,7 @@ public sealed partial class SpreadsheetImporter
         _ = stream.Read(buffer, 0, buffer.Length);
         if (buffer.Any(b => b == 0))
         {
-            throw new ImportException("O arquivo CSV/TXT parece binario ou corrompido.");
+            throw new ImportException("O arquivo CSV/TXT parece binário ou corrompido.");
         }
     }
 

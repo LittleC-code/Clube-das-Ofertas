@@ -8,7 +8,7 @@ public sealed class ReviewService(AppRepository repository)
     public async Task ApproveAsync(Guid itemId, UserAccount user, string comment, CancellationToken cancellationToken = default)
     {
         var item = await repository.GetCampaignItemAsync(itemId, cancellationToken)
-            ?? throw new InvalidOperationException("Item nao encontrado.");
+            ?? throw new InvalidOperationException("Item não encontrado.");
 
         await ApproveItemAsync(item, user, comment, cancellationToken);
     }
@@ -36,7 +36,7 @@ public sealed class ReviewService(AppRepository repository)
     {
         var blockers = item.BlockingReasons
             .Where(x => !x.Contains("pendente", StringComparison.OrdinalIgnoreCase))
-            .Where(x => !x.Contains("Revisao rejeitada", StringComparison.OrdinalIgnoreCase))
+            .Where(x => !TextNormalizer.NormalizeKey(x).Contains("REVISAO REJEITADA", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         await repository.UpdateItemReviewAsync(
@@ -55,13 +55,13 @@ public sealed class ReviewService(AppRepository repository)
             comment.Trim(),
             DateTimeOffset.UtcNow), cancellationToken);
 
-        await repository.AddAuditAsync(user.Id, user.Email, "Aprovou revisao", "CampaignItem", item.Id, item.DescriptionTabloid, cancellationToken);
+        await repository.AddAuditAsync(user.Id, user.Email, "Aprovou revisão", "CampaignItem", item.Id, item.DescriptionTabloid, cancellationToken);
     }
 
     public async Task RejectAsync(Guid itemId, UserAccount user, string comment, CancellationToken cancellationToken = default)
     {
         var item = await repository.GetCampaignItemAsync(itemId, cancellationToken)
-            ?? throw new InvalidOperationException("Item nao encontrado.");
+            ?? throw new InvalidOperationException("Item não encontrado.");
 
         var blockers = item.BlockingReasons.ToList();
         blockers.Add("Revisao rejeitada");
@@ -76,6 +76,6 @@ public sealed class ReviewService(AppRepository repository)
             comment.Trim(),
             DateTimeOffset.UtcNow), cancellationToken);
 
-        await repository.AddAuditAsync(user.Id, user.Email, "Rejeitou revisao", "CampaignItem", item.Id, item.DescriptionTabloid, cancellationToken);
+        await repository.AddAuditAsync(user.Id, user.Email, "Rejeitou revisão", "CampaignItem", item.Id, item.DescriptionTabloid, cancellationToken);
     }
 }

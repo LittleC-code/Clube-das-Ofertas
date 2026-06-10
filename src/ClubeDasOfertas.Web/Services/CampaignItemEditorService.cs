@@ -16,7 +16,7 @@ public sealed class CampaignItemEditorService(AppRepository repository)
     public async Task<CampaignItem> SaveAsync(Guid itemId, CampaignItemEditInput input, UserAccount user, CancellationToken cancellationToken = default)
     {
         var currentItem = await repository.GetCampaignItemAsync(itemId, cancellationToken)
-            ?? throw new InvalidOperationException("Item nao encontrado.");
+            ?? throw new InvalidOperationException("Item não encontrado.");
 
         var rules = (await repository.ListRulesAsync(cancellationToken))
             .Where(x => x.IsActive)
@@ -60,7 +60,7 @@ public sealed class CampaignItemEditorService(AppRepository repository)
         var descriptionTabloid = input.DescriptionTabloid.Trim();
         if (string.IsNullOrWhiteSpace(descriptionTabloid))
         {
-            throw new InvalidOperationException("Informe a descricao do item.");
+            throw new InvalidOperationException("Informe a descrição do item.");
         }
 
         var quantityRaw = input.QuantityRaw.Trim();

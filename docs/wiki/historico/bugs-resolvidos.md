@@ -2,7 +2,7 @@
 titulo: bugs-resolvidos
 categoria: historico
 criado: 2026-06-08
-atualizado: 2026-06-08
+atualizado: 2026-06-09
 fontes: []
 links: [../sintese/mojibake-codificacao.md]
 ---
@@ -49,3 +49,24 @@ links: [../sintese/mojibake-codificacao.md]
 - Causa raiz: o formulário de edição lia os preços finais já calculados em vez de reaproveitar a expressão crua digitada pelo operador, e o banco ainda não persistia esses textos separados.
 - Solução: `campaign_items` passou a guardar `price_sale_raw` e `price_club_raw`, o repositório passou a ler e gravar esses campos, e a tela de edição voltou a exibir a expressão original enquanto a listagem mantém o valor convertido.
 - Verificação: `dotnet build ClubeDasOfertas.slnx` e `dotnet run --no-build --project tests\ClubeDasOfertas.Tests\ClubeDasOfertas.Tests.csproj` concluídos com sucesso.
+
+## 2026-06-09 - Detalhe da campanha repetia importacao e espalhava acoes
+
+- Sintoma: depois de criar a campanha, a tela de detalhe repetia o formulario de importacao, gastava uma coluna inteira com vigencia e deixava as acoes isoladas no fim da tabela, enquanto as descricoes continuavam presas em uma unica linha.
+- Causa raiz: `RenderCampaignDetails` ainda agrupava importacao, revisao e exportacao na mesma secao, e o CSS da tabela aplicava `white-space: nowrap` para todas as celulas sem excecao.
+- Solucao: a importacao foi removida da tela de detalhe, a vigencia subiu para baixo do titulo da campanha, as descricoes ganharam uma classe com quebra controlada e os botoes foram movidos para junto de preco final e quantidade.
+- Verificacao: `dotnet build ClubeDasOfertas.slnx`.
+
+## 2026-06-09 — Fonte sumia em planilha pronta e exportação travava
+
+- Sintoma: ao importar uma planilha pronta, itens do mesmo bloco mesclado perdiam a informação de `Tabloide` ou `App`, e a exportação ficava bloqueada enquanto existissem pendências de revisão.
+- Causa raiz: o leitor de XLSX/XLSM considerava apenas células explícitas, sem replicar o valor dos intervalos definidos em `mergeCells`; além disso, `ExportService` tratava qualquer `blocking_reasons` como bloqueio duro.
+- Solução: o importador passou a propagar o valor da célula superior esquerda para o intervalo mesclado, preservando `fonte` e `vigencia`, e a exportação passou a seguir com aviso na interface e com colunas adicionais de status, riscos e pendências no CSV.
+- Verificação: `dotnet build ClubeDasOfertas.slnx` e `dotnet run --no-build --project tests\ClubeDasOfertas.Tests\ClubeDasOfertas.Tests.csproj` concluídos com sucesso.
+
+## 2026-06-09 - UI misturava acentos, labels crus e textos inconsistentes
+
+- Sintoma: a interface exibia uma combinacao de termos sem acento, labels tecnicos crus como `SEM_CATALOGO`, funcoes em ingles no historico e pluralizacoes improvisadas como `item(ns)` e `campanha(s)`.
+- Causa raiz: os textos visiveis estavam espalhados entre `Program.cs`, `HtmlView.cs`, seeds e mensagens de servico, sem uma camada de apresentacao que corrigisse dados legados ou padronizasse os rótulos.
+- Solucao: a UI passou a usar textos revisados em portugues brasileiro, com mapeamento de badges, historico e filtros para exibicao mais clara, alem da correcao das mensagens que sobem da importacao e da revisao.
+- Verificacao: `dotnet build ClubeDasOfertas.slnx` e `dotnet run --project tests\ClubeDasOfertas.Tests\ClubeDasOfertas.Tests.csproj`.

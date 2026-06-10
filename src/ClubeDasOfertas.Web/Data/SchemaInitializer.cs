@@ -63,7 +63,7 @@ public sealed class SchemaInitializer(AppDb db, IConfiguration configuration, Ap
 
         await repository.AddRuleAsync(new ConversionRule(
             Guid.NewGuid(),
-            "Pesaveis e cada 100g",
+            "Pesáveis e cada 100 g",
             RuleTypes.Weighted,
             @"\b(100\s*G|CADA\s*100\s*G|PRESUNTO|MORTADELA|ALHO\s*A\s*GRANEL|QUEIJO\s*MUSSARELA|MUSSARELA|SALAME)\b",
             10m,

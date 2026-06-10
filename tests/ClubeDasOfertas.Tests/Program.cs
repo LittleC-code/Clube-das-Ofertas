@@ -1,6 +1,7 @@
 using ClubeDasOfertas.Web.Domain;
 using ClubeDasOfertas.Web.Services;
 using Microsoft.AspNetCore.Http;
+using System.IO.Compression;
 using System.Text;
 
 var root = FindRepoRoot(AppContext.BaseDirectory);
@@ -77,8 +78,17 @@ await using (var stream = File.OpenRead(workbookPath))
     var file = new FormFile(stream, 0, stream.Length, "file", Path.GetFileName(workbookPath));
     await AssertThrowsWhereAsync<ImportException>(
         () => importer.ReadCampaignRowsAsync(file, "Aba inexistente"),
-        ex => ex.Message.Contains("Abas disponiveis:", StringComparison.OrdinalIgnoreCase),
+        ex => ex.Message.Contains("Abas disponíveis:", StringComparison.OrdinalIgnoreCase),
         "A importacao deve informar as abas disponiveis quando a aba escolhida nao existir.");
+}
+
+await using (var stream = CreateMergedCampaignWorkbook())
+{
+    var file = new FormFile(stream, 0, stream.Length, "file", "mesclado.xlsx");
+    var mergedRows = await importer.ReadCampaignRowsAsync(file);
+    Assert(mergedRows.Count == 2, "Workbook de teste com merge deve produzir duas linhas de campanha.");
+    Assert(mergedRows[0].Source == "Tabloide" && mergedRows[1].Source == "Tabloide", "Celulas mescladas da fonte devem propagar o valor para todas as linhas.");
+    Assert(mergedRows[1].OriginalVigency == "VIGENCIA 05 A 08", "Celulas mescladas da vigencia devem propagar o valor para todas as linhas.");
 }
 
 var weightedItem = CampaignImportService.EvaluateItem(
@@ -160,6 +170,14 @@ var duplicateClearedItems = CampaignImportService.MarkDuplicateBarcodes(
     duplicateItems[1] with { Barcode = "7892" }
 ]);
 Assert(duplicateClearedItems.All(x => !x.RiskFlags.Contains("DUPLICIDADE")), "Duplicidade antiga deve ser removida quando os codigos deixam de colidir.");
+
+var exportCampaign = new Campaign(Guid.NewGuid(), "Campanha teste", new DateOnly(2026, 6, 5), new DateOnly(2026, 6, 8), CampaignStatus.Imported, Guid.NewGuid(), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+var exportCsv = ExportService.BuildCsv(exportCampaign, [weightedItem, packageItem]);
+Assert(exportCsv.StartsWith("codigo_barras;preco_venda;preco_clube;quantidade;unidade;fonte;", StringComparison.Ordinal), "Cabecalho do CSV deve manter as colunas originais do CRM.");
+Assert(exportCsv.Contains("status_item;status_revisao;revisao_obrigatoria;riscos;pendencias;linha_origem;vigencia_original;preco_original_venda;preco_original_clube", StringComparison.Ordinal), "Cabecalho do CSV deve incluir o contexto operacional novo.");
+Assert(exportCsv.Contains("Tabloide", StringComparison.Ordinal) && exportCsv.Contains("App", StringComparison.Ordinal), "CSV deve manter a fonte do item para diferenciar tabloide e aplicativo.");
+Assert(exportCsv.Contains("Conversao de pesavel pendente", StringComparison.Ordinal) && exportCsv.Contains("Fardo pendente", StringComparison.Ordinal), "CSV deve exportar as pendencias dos itens.");
+Assert(exportCsv.Contains("PESAVEL", StringComparison.Ordinal) && exportCsv.Contains("FARDO_CAIXA", StringComparison.Ordinal), "CSV deve exportar os riscos dos itens.");
 
 await using (var stream = new MemoryStream([0x50, 0x4B, 0x03, 0x04]))
 {
@@ -259,4 +277,84 @@ static ProductCatalogEntry NewCatalog(string descriptionTabloid, string descript
         Parsing.CodeType(barcode),
         now,
         now);
+}
+
+static MemoryStream CreateMergedCampaignWorkbook()
+{
+    var stream = new MemoryStream();
+    using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+    {
+        WriteEntry(archive, "[Content_Types].xml", """
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>
+""");
+        WriteEntry(archive, "_rels/.rels", """
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>
+""");
+        WriteEntry(archive, "xl/workbook.xml", """
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Base Clube - CLT" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>
+""");
+        WriteEntry(archive, "xl/_rels/workbook.xml.rels", """
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>
+""");
+        WriteEntry(archive, "xl/worksheets/sheet1.xml", """
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1">
+      <c r="A1" t="inlineStr"><is><t>FONTE</t></is></c>
+      <c r="B1" t="inlineStr"><is><t>VIGENCIA</t></is></c>
+      <c r="C1" t="inlineStr"><is><t>DESCRICAO NO TABLOIDE</t></is></c>
+      <c r="D1" t="inlineStr"><is><t>QUANTIDADE LIMITADA</t></is></c>
+      <c r="E1" t="inlineStr"><is><t>VENDA</t></is></c>
+      <c r="F1" t="inlineStr"><is><t>VENDA CLUBE</t></is></c>
+    </row>
+    <row r="2">
+      <c r="A2" t="inlineStr"><is><t>Tabloide</t></is></c>
+      <c r="B2" t="inlineStr"><is><t>VIGENCIA 05 A 08</t></is></c>
+      <c r="C2" t="inlineStr"><is><t>Arroz tipo 1</t></is></c>
+      <c r="D2" t="inlineStr"><is><t>1 Unidades</t></is></c>
+      <c r="E2" t="inlineStr"><is><t>10,00</t></is></c>
+      <c r="F2" t="inlineStr"><is><t>9,00</t></is></c>
+    </row>
+    <row r="3">
+      <c r="C3" t="inlineStr"><is><t>Feijao carioca</t></is></c>
+      <c r="D3" t="inlineStr"><is><t>2 Unidades</t></is></c>
+      <c r="E3" t="inlineStr"><is><t>12,00</t></is></c>
+      <c r="F3" t="inlineStr"><is><t>11,00</t></is></c>
+    </row>
+  </sheetData>
+  <mergeCells count="2">
+    <mergeCell ref="A2:A3"/>
+    <mergeCell ref="B2:B3"/>
+  </mergeCells>
+</worksheet>
+""");
+    }
+
+    stream.Position = 0;
+    return stream;
+}
+
+static void WriteEntry(ZipArchive archive, string path, string content)
+{
+    var entry = archive.CreateEntry(path);
+    using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false));
+    writer.Write(content);
 }
