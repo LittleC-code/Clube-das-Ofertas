@@ -2,9 +2,9 @@
 titulo: item
 categoria: dominio
 criado: 2026-06-08
-atualizado: 2026-06-08
+atualizado: 2026-06-12
 fontes: []
-links: []
+links: [campanha.md, ../tecnico/arquitetura.md]
 ---
 
 # Item
@@ -21,3 +21,6 @@ Na ediÃ§Ã£o manual de itens da campanha, campos de quantidade e preÃ§o pod
 - O preview da conta permanece visível sempre que o item entra no fluxo de fardos e caixas, mesmo depois de salvar e reabrir a edição, para validar novas conversões antes da confirmação.
 - Ao reabrir a edição, os campos de preço voltam com a expressão original da conta salva em `price_sale_raw` e `price_club_raw`; a listagem principal continua exibindo apenas os valores finais convertidos.
 - A `fonte` do item diferencia `Tabloide` e `App`; na importacao de planilhas prontas, esse valor precisa ser herdado de celulas mescladas para nao desaparecer nas linhas seguintes do mesmo bloco.
+- Quando o item entra por inclusao manual em uma campanha ja criada, o fluxo procura primeiro por codigo de barras e depois por descricao unica no catalogo, reaproveita a mesma avaliacao da importacao e grava a `fonte` como `Manual` para rastreabilidade.
+- Nesse caminho, a `vigencia_original` recebe o periodo da propria campanha para manter o contexto operacional na exportacao.
+- Para itens que casam com regras de `Fardo` ou `Caixa`, a quantidade final agora e dividida pelo multiplicador da regra enquanto o preco continua sendo multiplicado, mantendo a leitura da promocao no formato esperado pelo CRM.

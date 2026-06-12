@@ -11,8 +11,122 @@ public sealed record CampaignItemEditInput(
     string PriceSaleRaw,
     string PriceClubRaw);
 
+public sealed record CampaignItemCreateInput(
+    string DescriptionTabloid,
+    string DescriptionSolidus,
+    string Barcode,
+    string QuantityRaw,
+    string PriceSaleRaw,
+    string PriceClubRaw);
+
 public sealed class CampaignItemEditorService(AppRepository repository)
 {
+    public async Task<CampaignItem> CreateAsync(Guid campaignId, CampaignItemCreateInput input, UserAccount user, CancellationToken cancellationToken = default)
+    {
+        var campaign = await repository.GetCampaignAsync(campaignId, cancellationToken)
+            ?? throw new InvalidOperationException("Campanha não encontrada.");
+
+        var descriptionTabloid = input.DescriptionTabloid.Trim();
+        if (string.IsNullOrWhiteSpace(descriptionTabloid))
+        {
+            throw new InvalidOperationException("Informe a descrição do item.");
+        }
+
+        var quantityRaw = input.QuantityRaw.Trim();
+        var priceSaleRaw = input.PriceSaleRaw.Trim();
+        var priceClubRaw = input.PriceClubRaw.Trim();
+        var source = "Manual";
+        var originalVigency = $"{campaign.ValidFrom:dd/MM/yyyy} a {campaign.ValidTo:dd/MM/yyyy}";
+
+        ProductCatalogEntry? autoMatch = null;
+        var barcode = input.Barcode.Trim();
+        if (!string.IsNullOrWhiteSpace(barcode))
+        {
+            autoMatch = await repository.GetCatalogEntryByBarcodeAsync(barcode, cancellationToken);
+        }
+
+        if (autoMatch is null)
+        {
+            var matches = await repository.FindCatalogMatchesAsync(TextNormalizer.NormalizeKey(descriptionTabloid), cancellationToken);
+            if (matches.Count == 1)
+            {
+                autoMatch = matches[0];
+            }
+        }
+
+        var resolvedSolidus = string.IsNullOrWhiteSpace(input.DescriptionSolidus)
+            ? autoMatch?.DescriptionSolidus.Trim() ?? ""
+            : input.DescriptionSolidus.Trim();
+
+        if (string.IsNullOrWhiteSpace(barcode))
+        {
+            barcode = autoMatch?.Barcode.Trim() ?? "";
+        }
+
+        ProductCatalogEntry? resolvedCatalog = null;
+        if (!string.IsNullOrWhiteSpace(barcode))
+        {
+            resolvedCatalog = new ProductCatalogEntry(
+                autoMatch?.Id ?? Guid.Empty,
+                descriptionTabloid,
+                TextNormalizer.NormalizeKey(descriptionTabloid),
+                autoMatch?.Category ?? "",
+                resolvedSolidus,
+                TextNormalizer.NormalizeKey(resolvedSolidus),
+                barcode,
+                Parsing.CodeType(barcode),
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow);
+        }
+
+        var rules = (await repository.ListRulesAsync(cancellationToken))
+            .Where(x => x.IsActive)
+            .ToList();
+
+        var existingItems = (await repository.GetCampaignItemsAsync(campaignId, cancellationToken)).ToList();
+        var nextSourceRow = existingItems.Count == 0 ? 1 : existingItems.Max(x => x.SourceRow) + 1;
+        var batch = new ImportBatch(Guid.NewGuid(), campaign.Id, "Inclusão manual", user.Id, DateTimeOffset.UtcNow, 1);
+
+        var createdItem = CampaignImportService.EvaluateItem(
+            campaign.Id,
+            batch.Id,
+            new RawCampaignRow(
+                nextSourceRow,
+                source,
+                originalVigency,
+                descriptionTabloid,
+                quantityRaw,
+                priceSaleRaw,
+                priceClubRaw),
+            resolvedCatalog,
+            rules);
+
+        if (!string.IsNullOrWhiteSpace(resolvedSolidus))
+        {
+            createdItem = createdItem with { DescriptionSolidus = resolvedSolidus };
+        }
+
+        var campaignItems = existingItems
+            .Concat([createdItem])
+            .ToList();
+
+        campaignItems = CampaignImportService.MarkDuplicateBarcodes(campaignItems);
+        var finalCreatedItem = campaignItems.First(x => x.Id == createdItem.Id);
+        var itemsToUpdate = campaignItems.Where(x => x.Id != finalCreatedItem.Id).ToList();
+
+        await repository.AddManualCampaignItemAsync(batch, finalCreatedItem, itemsToUpdate, cancellationToken);
+        await repository.AddAuditAsync(
+            user.Id,
+            user.Email,
+            "Incluiu item manualmente",
+            "CampaignItem",
+            finalCreatedItem.Id,
+            $"{finalCreatedItem.DescriptionTabloid} / {finalCreatedItem.Barcode}",
+            cancellationToken);
+
+        return finalCreatedItem;
+    }
+
     public async Task<CampaignItem> SaveAsync(Guid itemId, CampaignItemEditInput input, UserAccount user, CancellationToken cancellationToken = default)
     {
         var currentItem = await repository.GetCampaignItemAsync(itemId, cancellationToken)

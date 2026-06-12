@@ -290,3 +290,164 @@ Páginas técnicas atualizadas: tecnico/arquitetura.md
 Páginas de domínio atualizadas: nenhuma
 Páginas de histórico atualizadas: nenhuma
 Aprendizados registrados: para eliminar a barra horizontal residual da lista de campanhas foi necessario reduzir larguras minimas e compactar as acoes; para as regras, a melhor leitura veio de uma previa limitada com expansao no hover, em vez de deixar a quebra de linha aberta o tempo todo.
+## [2026-06-11] sessão-iniciada | Ajustar coluna de pendências na página da campanha
+Tarefa: compactar a lista resumida de campanhas para manter a coluna de pendências visível sem rolagem horizontal desnecessária.
+Páginas lidas: wiki-index.md, wiki-log.md, tecnico/arquitetura.md, historico/bugs-resolvidos.md
+
+## [2026-06-11] pós-tarefa | Compactar a lista de campanhas
+Páginas técnicas atualizadas: tecnico/arquitetura.md
+Páginas de domínio atualizadas: nenhuma
+Páginas de histórico atualizadas: historico/bugs-resolvidos.md
+Aprendizados registrados: na lista resumida de campanhas, a coluna de pendências só volta a caber de forma estável quando a compactação considera em conjunto grid, badges, textos auxiliares e botões, inclusive sob os overrides tipográficos da page-campaign.
+
+## [2026-06-11] sessão-iniciada | Enxugar a lista principal de regras
+Tarefa: deixar na tela principal de regras apenas status, nome, como acontece, multiplicador e ações, movendo o restante para a edição inline.
+Páginas lidas: wiki-index.md, wiki-log.md, tecnico/arquitetura.md
+
+## [2026-06-11] pós-tarefa | Simplificar colunas da página de regras
+Páginas técnicas atualizadas: tecnico/arquitetura.md
+Páginas de domínio atualizadas: nenhuma
+Páginas de histórico atualizadas: nenhuma
+Aprendizados registrados: na tela de regras, a leitura rápida fica mais útil quando a grade principal mostra só status, identificação, gatilho e multiplicador; campos de configuração detalhada funcionam melhor dentro do formulário de edição inline.
+
+## [2026-06-11] sessão-iniciada | Subir a informação exibida na página de regras
+Tarefa: aproximar visualmente a informação expandida de "Como acontece" da própria regra na listagem.
+Páginas lidas: wiki-index.md, wiki-log.md, tecnico/arquitetura.md
+
+## [2026-06-11] pós-tarefa | Ajustar posição da informação expandida em regras
+Páginas técnicas atualizadas: tecnico/arquitetura.md
+Páginas de domínio atualizadas: nenhuma
+Páginas de histórico atualizadas: nenhuma
+Aprendizados registrados: na listagem de regras, a leitura da previa expandida fica mais natural quando o balao abre acima do criterio, em vez de descer para longe da linha correspondente.
+
+## [2026-06-11] sessão-iniciada | Recalibrar a prévia expandida das regras
+Tarefa: trazer a informação de "Como acontece" para perto da regra sem cobrir a primeira linha da tabela.
+Páginas lidas: wiki-index.md, wiki-log.md, tecnico/arquitetura.md
+
+## [2026-06-11] pós-tarefa | Recalibrar a posição da prévia em regras
+Páginas técnicas atualizadas: tecnico/arquitetura.md
+Páginas de domínio atualizadas: nenhuma
+Páginas de histórico atualizadas: nenhuma
+Aprendizados registrados: para preservar a leitura da primeira regra, a prévia precisa ficar perto do critério, mas sem sair da faixa visual da própria linha.
+
+## [2026-06-11] pós-tarefa | Transformar tooltip das regras em overlay flutuante
+Páginas técnicas atualizadas: tecnico/arquitetura.md
+Páginas de domínio atualizadas: nenhuma
+Páginas de histórico atualizadas: nenhuma
+Aprendizados registrados: para que a informação deixe de parecer parte da tabela, o balão precisa sair do fluxo do `tablewrap` e ser posicionado como overlay fixo no viewport; assim a última regra não cria barra de rolagem extra.
+
+## [2026-06-11] sessão-iniciada | Centralizar a tooltip sobre a própria regra
+Tarefa: manter a informação da regra flutuante, mas posicionada no centro da própria célula, sem subir ou descer.
+Páginas lidas: wiki-index.md, wiki-log.md, tecnico/arquitetura.md
+
+## [2026-06-11] pós-tarefa | Centralizar a tooltip sobre a regra
+Páginas técnicas atualizadas: tecnico/arquitetura.md
+Páginas de domínio atualizadas: nenhuma
+Páginas de histórico atualizadas: nenhuma
+Aprendizados registrados: quando o usuário quer uma informação sobreposta e não separada da tabela, o melhor ponto de ancoragem é o centro da própria célula, usando o overlay apenas para desenhar o contexto sem afetar o fluxo da lista.
+
+## [2026-06-11] sessao-iniciada | Evitar tooltip vazia nas regras
+Tarefa: fazer a informacao flutuante da regra receber o texto sem depender de atributos crus do HTML.
+Páginas lidas: wiki-index.md, wiki-log.md, tecnico/arquitetura.md
+
+## [2026-06-11] pós-tarefa | Corrigir tooltip vazia nas regras
+Páginas técnicas atualizadas: tecnico/arquitetura.md
+Páginas de domínio atualizadas: nenhuma
+Páginas de histórico atualizadas: nenhuma
+Aprendizados registrados: Base64 reduz o risco de perder o conteudo da tooltip quando a regra usa caracteres que podem ser mal interpretados no atributo HTML; o fallback para a preview da celula evita um balao vazio.
+
+## [2026-06-11] sessao-iniciada | Voltar tooltip para HTML e CSS
+Tarefa: remover a dependencia de JavaScript da tooltip das regras para eliminar a barra vazia e manter o balão sobre a própria célula.
+Páginas lidas: wiki-index.md, wiki-log.md, tecnico/arquitetura.md
+
+## [2026-06-11] pós-tarefa | Reverter tooltip para HTML e CSS
+Páginas técnicas atualizadas: tecnico/arquitetura.md
+Páginas de domínio atualizadas: nenhuma
+Páginas de histórico atualizadas: nenhuma
+Aprendizados registrados: quando a tooltip precisa ficar sobre a própria regra, o caminho mais estável é renderizar o balão no HTML e controlar a visibilidade só com CSS; assim o texto não depende de script e não fica vazia.
+
+## [2026-06-11] pós-tarefa | Fixar tooltip das regras fora da tabela
+Páginas técnicas atualizadas: tecnico/arquitetura.md
+Páginas de domínio atualizadas: nenhuma
+Páginas de histórico atualizadas: historico/bugs-resolvidos.md
+Aprendizados registrados: o balão das regras ficou mais estável quando o texto completo saiu do fluxo do `tablewrap` e passou a ser desenhado como overlay fixo com conteúdo guardado em `<template>`, mantendo a leitura sobre a própria célula sem criar rolagem extra.
+
+## [2026-06-12] sessão-iniciada | Ajustar fonte e paleta da lista de campanhas e do gráfico
+Tarefa: aumentar discretamente a fonte da área de campanhas criadas, trocar a paleta do gráfico do catálogo e normalizar `Sobremesa` para `Sobremesas` na UI.
+Páginas lidas: wiki-index.md, wiki-log.md, tecnico/arquitetura.md, historico/bugs-resolvidos.md
+
+## [2026-06-12] pós-tarefa | Recalibrar tipografia e categorias do catálogo
+Páginas técnicas atualizadas: tecnico/arquitetura.md
+Páginas de domínio atualizadas: nenhuma
+Páginas de histórico atualizadas: historico/bugs-resolvidos.md
+Aprendizados registrados: a paleta do gráfico ficou mais estável quando passou a depender de um mapa fixo por categoria, e a correção visual de `Sobremesa` funcionou melhor como normalização de apresentação reaproveitada também no filtro lateral e na lista de itens.
+
+## [2026-06-12] pós-tarefa | Tornar as mudanças do catálogo visíveis fora do gráfico
+Páginas técnicas atualizadas: tecnico/arquitetura.md
+Páginas de domínio atualizadas: nenhuma
+Páginas de histórico atualizadas: nenhuma
+Aprendizados registrados: quando a mudança de cor vive só no gráfico, ela pode passar despercebida; aplicar a mesma paleta na navegação lateral e nos cards dos itens torna a alteração de categoria imediatamente perceptível no catálogo.
+
+## [2026-06-12] pós-tarefa | Canonizar categorias do catálogo antes de colorir e filtrar
+Páginas técnicas atualizadas: tecnico/arquitetura.md
+Páginas de domínio atualizadas: nenhuma
+Páginas de histórico atualizadas: historico/bugs-resolvidos.md
+Aprendizados registrados: a paleta só fica confiável quando filtro, agrupamento e exibição compartilham a mesma chave canônica de categoria; corrigir só o texto renderizado não basta quando os valores reais do banco variam entre singular, plural ou acentuação.
+
+## [2026-06-12] pós-tarefa | Separar Frios de Hortifruti e restaurar Todos os itens
+Páginas técnicas atualizadas: tecnico/arquitetura.md
+Páginas de domínio atualizadas: nenhuma
+Páginas de histórico atualizadas: historico/bugs-resolvidos.md
+Aprendizados registrados: no catálogo, unir categorias próximas visualmente pode esconder filtros importantes; manter `Todos os itens` como entrada própria e preservar `Frios` separado de `Hortifruti` devolve legibilidade e deixa a paleta mais fiel ao domínio.
+
+## [2026-06-12] pós-tarefa | Fazer Todos os itens voltar a agir como ausência de filtro
+Páginas técnicas atualizadas: tecnico/arquitetura.md
+Páginas de domínio atualizadas: nenhuma
+Páginas de histórico atualizadas: historico/bugs-resolvidos.md
+Aprendizados registrados: quando um rótulo de interface também circula como valor de formulário, ele precisa ser normalizado de volta para o estado sem filtro; caso contrário, a própria label vira uma pseudo-categoria e esvazia a consulta.
+
+## [2026-06-12] pós-tarefa | Recriar o gráfico em SVG para hover por fatia
+Páginas técnicas atualizadas: tecnico/arquitetura.md
+Páginas de domínio atualizadas: nenhuma
+Páginas de histórico atualizadas: historico/bugs-resolvidos.md
+Aprendizados registrados: para donut com tooltip por segmento, `conic-gradient` é bom para resumo estático, mas SVG com strokes separados entrega bordas mais limpas e interação confiável em cada categoria.
+
+## [2026-06-12] pós-tarefa | Remover recorte branco entre as fatias do gráfico
+Páginas técnicas atualizadas: tecnico/arquitetura.md
+Páginas de domínio atualizadas: nenhuma
+Páginas de histórico atualizadas: historico/bugs-resolvidos.md
+Aprendizados registrados: quando o donut usa gaps artificiais para separar fatias, o fundo claro pode vazar e parecer defeito; para este layout, foi melhor manter as fatias encostadas e deixar a leitura apoiada pelo hover e pela legenda.
+
+## [2026-06-12] pós-tarefa | Incluir itens manualmente em campanhas ja criadas
+
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: dominio/campanha.md, dominio/item.md
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: a inclusao manual precisa seguir o mesmo caminho de avaliacao da importacao para manter regras, auditoria e exportacao coerentes, mas deve marcar a origem explicitamente como `Manual`.
+
+## [2026-06-12] pós-tarefa | Regras de fardo e caixa dividem a quantidade
+
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: dominio/item.md
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: se a regra ja multiplica o preco pelo fator da embalagem, a quantidade limitada precisa usar o mesmo fator no sentido inverso para que a lista e o CSV reflitam a unidade comercial correta.
+
+## [2026-06-12] sessao-iniciada | Diagnosticar falha de startup no PostgreSQL local
+Tarefa: investigar a excecao de conexao do Npgsql no startup e corrigir o diagnostico operacional da inicializacao.
+Paginas lidas: wiki-index.md, wiki-log.md, tecnico/arquitetura.md, historico/bugs-resolvidos.md
+
+## [2026-06-12] pós-tarefa | Tornar a falha de conexao do PostgreSQL mais acionavel
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: historico/bugs-resolvidos.md
+Aprendizados registrados: quando o banco local nao esta disponivel, a aplicacao precisa falhar com uma mensagem que aponte o pre-requisito faltante; no nosso ambiente, `localhost` tambem merece ser normalizado para IPv4 para evitar diagnosticos enganadores em `::1`.
+
+## [2026-06-12] sessao-iniciada | Inspecionar e validar alteracoes antes do commit
+Tarefa: revisar o worktree atual, validar build e testes e registrar um commit com o estado aprovado.
+Paginas lidas: wiki-index.md, wiki-log.md
+
+## [2026-06-12] pós-tarefa | Validar alteracoes e preparar commit
+Paginas tecnicas atualizadas: nenhuma
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: o conjunto atual de alteracoes compilou com sucesso; a suite local passou via `dotnet run --no-build` porque havia um binario de web app em uso por outro processo durante a tentativa com rebuild.

@@ -103,6 +103,8 @@ flowchart TD
 - [AppDb.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/AppDb.cs>)
   - Abre conexao com PostgreSQL.
   - Completa a senha usando `ConnectionStrings:PostgreSqlPassword`, `POSTGRESQL_PASSWORD` ou `POSTGRES_PASSWORD`.
+  - Normaliza `localhost` para `127.0.0.1` na configuracao padrao para evitar falha quando o PostgreSQL local escuta so em IPv4.
+  - Se a conexao falhar, a excecao passa a orientar explicitamente a subir o banco local e carregar as variaveis do `.env` no processo atual.
   - Se houver erro de conexao ou de configuracao de senha, este e o ponto base.
 
 - [SchemaInitializer.cs](</c:/Users/t.i/Projetos Git/Clube-das-Ofertas/src/ClubeDasOfertas.Web/Data/SchemaInitializer.cs>)

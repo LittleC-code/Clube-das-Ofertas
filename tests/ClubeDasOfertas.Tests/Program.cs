@@ -144,6 +144,7 @@ var packageItem = CampaignImportService.EvaluateItem(
 Assert(packageItem.RiskFlags.Contains("FARDO_CAIXA"), "Fardo/caixa deve ser detectado.");
 Assert(packageItem.RiskFlags.Contains("FARDO"), "Fardo deve receber flag especifica.");
 Assert(packageItem.BlockingReasons.Contains("Fardo pendente"), "Fardo deve bloquear exportacao ate revisao.");
+Assert(packageItem.Quantity == 10m, "Fardo deve dividir a quantidade pelo multiplicador.");
 Assert(packageItem.PriceSaleRaw == "41,94" && packageItem.PriceClubRaw == "35,94", "Edicao deve preservar os precos originais informados.");
 Assert(packageItem.FinalPriceSale == 83.88m && packageItem.FinalPriceClub == 71.88m, "Fardo deve poder aplicar multiplicador proprio.");
 
@@ -174,7 +175,7 @@ var packageItemWithMath = CampaignImportService.EvaluateItem(
     NewCatalog("Cerveja Long Neck 330ml", "CERV LONG NECK FD C/6", "7891991304887"),
     [fardoRule]);
 
-Assert(packageItemWithMath.Quantity == 120m && packageItemWithMath.Unit == "Unidades", "Fardo deve aceitar conta no campo de quantidade.");
+Assert(packageItemWithMath.Quantity == 60m && packageItemWithMath.Unit == "Unidades", "Fardo deve dividir a quantidade pelo multiplicador mesmo com conta no campo.");
 Assert(packageItemWithMath.PriceSaleRaw == "83,88/6" && packageItemWithMath.PriceClubRaw == "71,88/6", "Edicao deve preservar a expressao da conta dos precos.");
 Assert(packageItemWithMath.FinalPriceSale == 27.96m && packageItemWithMath.FinalPriceClub == 23.96m, "Fardo deve reaplicar a regra depois de calcular os precos informados.");
 
@@ -219,6 +220,17 @@ Assert(exportCsv.Contains("status_item;status_revisao;revisao_obrigatoria;riscos
 Assert(exportCsv.Contains("Tabloide", StringComparison.Ordinal) && exportCsv.Contains("App", StringComparison.Ordinal), "CSV deve manter a fonte do item para diferenciar tabloide e aplicativo.");
 Assert(exportCsv.Contains("Conversao de pesavel pendente", StringComparison.Ordinal) && exportCsv.Contains("Fardo pendente", StringComparison.Ordinal), "CSV deve exportar as pendencias dos itens.");
 Assert(exportCsv.Contains("PESAVEL", StringComparison.Ordinal) && exportCsv.Contains("FARDO_CAIXA", StringComparison.Ordinal), "CSV deve exportar os riscos dos itens.");
+
+var manualItem = weightedItem with
+{
+    Source = "Manual",
+    OriginalVigency = "05/06/2026 a 08/06/2026",
+    SourceRow = 99
+};
+
+var manualExportCsv = ExportService.BuildCsv(exportCampaign, [manualItem]);
+Assert(manualExportCsv.Contains(";Manual;", StringComparison.Ordinal), "CSV deve preservar a fonte Manual dos itens incluidos manualmente.");
+Assert(manualExportCsv.Contains("05/06/2026 a 08/06/2026", StringComparison.Ordinal), "CSV deve preservar a vigencia original dos itens incluidos manualmente.");
 
 await using (var stream = new MemoryStream([0x50, 0x4B, 0x03, 0x04]))
 {

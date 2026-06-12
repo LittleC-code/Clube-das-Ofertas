@@ -107,8 +107,11 @@ public sealed partial class CampaignImportService(
 
         if (packageRule is not null)
         {
+            var dividedQuantity = Math.Round(parsedQuantity.Quantity / packageRule.Multiplier, 3, MidpointRounding.AwayFromZero);
+
             finalSale = Math.Round(finalSale * packageRule.Multiplier, 2, MidpointRounding.AwayFromZero);
             finalClub = Math.Round(finalClub * packageRule.Multiplier, 2, MidpointRounding.AwayFromZero);
+            parsedQuantity = (dividedQuantity, parsedQuantity.Unit, parsedQuantity.IsValid);
             if (!string.IsNullOrWhiteSpace(packageRule.TargetUnit))
             {
                 unit = packageRule.TargetUnit;

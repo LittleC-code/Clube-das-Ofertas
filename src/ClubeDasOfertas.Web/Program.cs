@@ -576,6 +576,42 @@ app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/save", async (Guid
     }
 }).RequireAuthorization();
 
+app.MapPost("/campaigns/{campaignId:guid}/items/add", async (Guid campaignId, HttpContext context, AppRepository repository, CampaignItemEditorService editorService, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
+{
+    await antiforgery.ValidateRequestAsync(context);
+    var campaign = await repository.GetCampaignAsync(campaignId, cancellationToken);
+    if (campaign is null)
+    {
+        return CampaignMutationError(campaignId, "", "", "Campanha não encontrada.", context, 404);
+    }
+
+    var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
+    var form = await context.Request.ReadFormAsync(cancellationToken);
+    var filter = form["filter"].ToString();
+    var query = form["q"].ToString();
+
+    try
+    {
+        await editorService.CreateAsync(
+            campaignId,
+            new CampaignItemCreateInput(
+                form["description_tabloid"].ToString(),
+                form["description_solidus"].ToString(),
+                form["barcode"].ToString(),
+                form["quantity_raw"].ToString(),
+                form["price_sale"].ToString(),
+                form["price_club"].ToString()),
+            currentUser,
+            cancellationToken);
+
+        return await CampaignMutationResultAsync(campaignId, filter, query, "Item incluído manualmente.", context, repository, antiforgery, cancellationToken);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return CampaignMutationError(campaignId, filter, query, ex.Message, context);
+    }
+}).RequireAuthorization();
+
 app.MapPost("/campaigns/{id:guid}/export", async (Guid id, HttpContext context, AppRepository repository, ExportService exportService, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
     await antiforgery.ValidateRequestAsync(context);
@@ -937,15 +973,63 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
   {queryField}
   <input type="hidden" name="comment" value="">
   <button class="secondary" type="submit" data-busy-label="Confirmando...">Confirmar todos os itens visíveis</button>
-</form>
+  </form>
 """
         : "";
+    var manualItemSection = $"""
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>Incluir item manualmente</h2>
+      <p class="panel-subtitle">Use quando faltar um item na campanha. Se a descrição ou o código baterem com o catálogo, o sistema completa o restante automaticamente.</p>
+    </div>
+  </div>
+  <form method="post" action="/campaigns/{campaign.Id}/items/add" class="async-campaign-form">
+    {antiForgeryField}
+    {filterField}
+    {queryField}
+    <div class="item-edit-grid">
+      <div class="field span-2">
+        <label>Descrição tabloide</label>
+        <input name="description_tabloid" required placeholder="Ex.: Óleo de soja 900ml">
+      </div>
+      <div class="field">
+        <label>Código de barras</label>
+        <input name="barcode" placeholder="Opcional">
+      </div>
+      <div class="field span-2">
+        <label>Descrição Solidus</label>
+        <input name="description_solidus" placeholder="Opcional, será preenchida se houver catálogo">
+      </div>
+      <div class="field">
+        <label>Quantidade</label>
+        <input name="quantity_raw" required placeholder="Ex.: 12 Unidades ou 20/6">
+      </div>
+      <div class="field">
+        <label>Preço venda</label>
+        <input name="price_sale" required placeholder="Ex.: 9,99">
+      </div>
+      <div class="field">
+        <label>Preço clube</label>
+        <input name="price_club" required placeholder="Ex.: 8,99">
+      </div>
+      <div class="field span-3">
+        <div class="form-actions">
+          <button type="submit" data-busy-label="Incluindo...">Incluir item</button>
+          <span class="muted">O item entra como inclusão manual e continua sujeito às mesmas regras de revisão e exportação.</span>
+        </div>
+      </div>
+    </div>
+  </form>
+</section>
+""";
 
     var body = new StringBuilder();
     body.AppendLine($"""
 <h1>{HtmlView.E(campaign.Name)}</h1>
 <p class="panel-subtitle campaign-vigency-note">Vigência: {campaign.ValidFrom:dd/MM/yyyy} a {campaign.ValidTo:dd/MM/yyyy} ({DaysBetween(campaign.ValidFrom, campaign.ValidTo)})</p>
 <div id="campaign-stats">{RenderCampaignStats(stats)}</div>
+{manualItemSection}
 <section class="panel">
   <div class="panel-header">
     <div>
@@ -1241,8 +1325,14 @@ static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, strin
 
 static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnlyList<(string Category, int Count)> categories, string query, string category, string antiForgeryField)
 {
-    var selectedCategory = string.IsNullOrWhiteSpace(category) ? "" : category.Trim();
-    var selectedCategoryLabel = string.IsNullOrWhiteSpace(selectedCategory) ? "Todas as categorias" : selectedCategory;
+    var selectedCategory = TextNormalizer.IsAllCatalogItemsFilter(category) ? "" : category.Trim();
+    var selectedCategoryLabel = string.IsNullOrWhiteSpace(selectedCategory) ? "Todos os itens" : TextNormalizer.DisplayCatalogCategory(selectedCategory);
+    var groupedCategories = categories
+        .GroupBy(item => TextNormalizer.DisplayCatalogCategory(item.Category))
+        .Select(group => (Category: group.Key, Count: group.Sum(item => item.Count)))
+        .OrderByDescending(item => item.Count)
+        .ThenBy(item => item.Category, StringComparer.OrdinalIgnoreCase)
+        .ToList();
     var totalCatalogItems = categories.Sum(x => x.Count);
     var categoryChart = RenderCatalogCategoryChart(entries);
     var body = new StringBuilder();
@@ -1265,7 +1355,7 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
         <span>itens no catálogo</span>
       </div>
       <div class="catalog-summary">
-        <strong>{{categories.Count}}</strong>
+        <strong>{{groupedCategories.Count}}</strong>
         <span>categorias</span>
       </div>
     </div>
@@ -1280,17 +1370,19 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
     <div class="catalog-sidebar-section">
       <h2>Categorias</h2>
       <div class="catalog-category-list">
-        <a class="{{CatalogCategoryClass("", selectedCategory)}}" href="/catalog{{CatalogQuerySuffix(query, "")}}">
-          <span>Todas as categorias</span>
+        <a class="catalog-category catalog-category-all{{(string.IsNullOrWhiteSpace(selectedCategory) ? " active" : "")}}" href="/catalog{{CatalogQuerySuffix(query, "")}}" title="{{BuildCategoryFloatingLabel(totalCatalogItems, totalCatalogItems)}}">
+          <span class="catalog-category-name"><span class="catalog-category-dot" aria-hidden="true"></span>Todos os itens</span>
           <strong>{{totalCatalogItems}}</strong>
         </a>
 """);
 
-    foreach (var item in categories)
+    foreach (var item in groupedCategories)
     {
+        var displayCategory = item.Category;
+        var categoryColor = CatalogCategoryColor(displayCategory);
         body.AppendLine($"""
-        <a class="{CatalogCategoryClass(item.Category, selectedCategory)}" href="/catalog{CatalogQuerySuffix(query, item.Category)}">
-          <span>{HtmlView.E(item.Category)}</span>
+        <a class="{CatalogCategoryClass(displayCategory, selectedCategory)}" href="/catalog{CatalogQuerySuffix(query, displayCategory)}" style="--category-accent:{categoryColor}" title="{HtmlView.E(BuildCategoryFloatingLabel(item.Count, totalCatalogItems))}">
+          <span class="catalog-category-name"><span class="catalog-category-dot" aria-hidden="true"></span>{HtmlView.E(displayCategory)}</span>
           <strong>{item.Count}</strong>
         </a>
 """);
@@ -1327,14 +1419,16 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
 
     foreach (var entry in entries)
     {
+        var displayCategory = TextNormalizer.DisplayCatalogCategory(entry.Category);
+        var categoryColor = CatalogCategoryColor(displayCategory);
         body.AppendLine($"""
-      <article class="catalog-item">
+      <article class="catalog-item" style="--category-accent:{categoryColor}">
         <div class="catalog-item-main">
           <strong>{HtmlView.E(entry.DescriptionTabloid)}</strong>
           <span>{HtmlView.E(string.IsNullOrWhiteSpace(entry.DescriptionSolidus) ? "Sem descrição Solidus" : entry.DescriptionSolidus)}</span>
         </div>
         <div class="catalog-item-meta">
-          <div><label>Categoria</label><span>{HtmlView.E(string.IsNullOrWhiteSpace(entry.Category) ? "Sem categoria" : entry.Category)}</span></div>
+          <div><label>Categoria</label><span class="catalog-category-pill">{HtmlView.E(displayCategory)}</span></div>
           <div><label>Código</label><span class="mono">{HtmlView.E(entry.Barcode)}</span></div>
           <div><label>Tipo</label><span>{HtmlView.E(DisplayCatalogCodeType(entry.CodeType))}</span></div>
         </div>
@@ -1377,52 +1471,63 @@ static string RenderCatalogCategoryChart(IReadOnlyList<ProductCatalogEntry> entr
 """;
     }
 
-    var palette = new[]
-    {
-        "#9b0000",
-        "#ffcf33",
-        "#ad5200",
-        "#7b4f00",
-        "#c53d13",
-        "#6f3600",
-        "#d97706",
-        "#b91c1c"
-    };
-
     var groups = entries
-        .GroupBy(entry => string.IsNullOrWhiteSpace(entry.Category) ? "Sem categoria" : entry.Category.Trim())
-        .Select((group, index) => new
+        .GroupBy(entry => TextNormalizer.DisplayCatalogCategory(entry.Category))
+        .Select(group => new
         {
             Category = group.Key,
             Count = group.Count(),
-            Color = palette[index % palette.Length]
+            Color = CatalogCategoryColor(group.Key)
         })
         .OrderByDescending(item => item.Count)
         .ThenBy(item => item.Category, StringComparer.OrdinalIgnoreCase)
         .ToList();
 
     var total = groups.Sum(item => item.Count);
-    var stops = new List<string>();
+    const double chartRadius = 74d;
+    const double chartStrokeWidth = 44d;
+    var circumference = 2d * Math.PI * chartRadius;
+    var svgSegments = new StringBuilder();
     var legend = new StringBuilder();
-    var cursor = 0d;
+    var offset = 0d;
 
     foreach (var item in groups)
     {
         var share = total == 0 ? 0d : (double)item.Count / total;
-        var start = cursor * 100d;
-        cursor += share;
-        var end = cursor * 100d;
-        stops.Add($"{item.Color} {start.ToString("0.##", CultureInfo.InvariantCulture)}% {end.ToString("0.##", CultureInfo.InvariantCulture)}%");
-
         var percentage = (share * 100d).ToString("0.#", CultureInfo.GetCultureInfo("pt-BR"));
+        var segmentLength = circumference * share;
+        var visibleLength = groups.Count == 1
+            ? circumference
+            : Math.Max(segmentLength, 0.8d);
+        var tooltipMeta = BuildCategoryFloatingLabel(item.Count, total);
+
+        svgSegments.AppendLine($"""
+            <circle
+              class="catalog-chart-segment"
+              cx="100"
+              cy="100"
+              r="{chartRadius.ToString("0.##", CultureInfo.InvariantCulture)}"
+              pathLength="{circumference.ToString("0.####", CultureInfo.InvariantCulture)}"
+              stroke="{item.Color}"
+              stroke-width="{chartStrokeWidth.ToString("0.##", CultureInfo.InvariantCulture)}"
+              stroke-dasharray="{visibleLength.ToString("0.####", CultureInfo.InvariantCulture)} {Math.Max(circumference - visibleLength, 0d).ToString("0.####", CultureInfo.InvariantCulture)}"
+              stroke-dashoffset="{(-offset).ToString("0.####", CultureInfo.InvariantCulture)}"
+              data-chart-tooltip-title="{HtmlView.E(item.Category)}"
+              data-chart-tooltip-meta="{HtmlView.E(tooltipMeta)}"
+              tabindex="0"
+            />
+""");
+
         legend.AppendLine($"""
-        <div class="catalog-chart-row">
+        <div class="catalog-chart-row" data-chart-tooltip-title="{HtmlView.E(item.Category)}" data-chart-tooltip-meta="{HtmlView.E(tooltipMeta)}" tabindex="0">
           <span class="catalog-chart-swatch" style="background:{item.Color}"></span>
           <span class="catalog-chart-label">{HtmlView.E(item.Category)}</span>
           <strong>{item.Count}</strong>
           <span class="catalog-chart-share">{percentage}%</span>
         </div>
 """);
+
+        offset += segmentLength;
     }
 
     return $$"""
@@ -1436,7 +1541,9 @@ static string RenderCatalogCategoryChart(IReadOnlyList<ProductCatalogEntry> entr
       </div>
       <div class="catalog-chart-layout">
         <div class="catalog-chart-visual-wrap">
-          <div class="catalog-chart-visual" style="--chart-stops: {{HtmlView.E(string.Join(", ", stops))}};"></div>
+          <svg class="catalog-chart-visual" viewBox="0 0 200 200" role="img" aria-label="Distribuição das categorias dos itens visíveis">
+{{svgSegments}}
+          </svg>
           <div class="catalog-chart-total">
             <strong>{{total}}</strong>
             <span>itens visíveis</span>
@@ -1472,23 +1579,25 @@ static string RenderRules(IReadOnlyList<ConversionRule> rules, string antiForger
   <section>
     <div class="tablewrap rules-tablewrap">
       <table>
-        <thead><tr><th>Status</th><th>Nome</th><th>Tipo</th><th>Como acontece</th><th>Multiplicador</th><th>Unidade</th><th>Categorias</th><th>Revis&atilde;o</th><th></th></tr></thead>
+        <thead><tr><th>Status</th><th>Nome</th><th>Como acontece</th><th>Multiplicador</th><th></th></tr></thead>
         <tbody>
 """);
 
-    foreach (var rule in rules)
+foreach (var rule in rules)
     {
         var displayedPatternInput = RulePatternConverter.DisplayPatternInput(rule);
         body.AppendLine($"""
 <tr>
   <td>{HtmlView.Badge(rule.IsActive ? "Ativa" : "Inativa", rule.IsActive ? "ok" : "")}</td>
   <td>{HtmlView.E(DisplayRuleName(rule.Name))}</td>
-  <td>{HtmlView.E(DisplayRuleType(rule.RuleType))}</td>
-  <td class="rule-pattern-cell"><div class="rule-pattern-preview"><strong class="rule-pattern-text">{HtmlView.E(displayedPatternInput)}</strong></div><div class="rule-pattern-hover"><strong>{HtmlView.E(displayedPatternInput)}</strong><span class="muted mono">{HtmlView.E(rule.Pattern)}</span></div></td>
+  <td class="rule-pattern-cell" tabindex="0">
+    <div class="rule-pattern-preview"><strong class="rule-pattern-text">{HtmlView.E(displayedPatternInput)}</strong></div>
+    <template class="rule-pattern-tooltip-source">
+      <strong>{HtmlView.E(displayedPatternInput)}</strong>
+      <span class="muted mono">{HtmlView.E(rule.Pattern)}</span>
+    </template>
+  </td>
   <td>{rule.Multiplier:0.####}</td>
-  <td>{HtmlView.E(string.IsNullOrWhiteSpace(rule.TargetUnit) ? "-" : rule.TargetUnit)}</td>
-  <td>{HtmlView.E(string.IsNullOrWhiteSpace(rule.CategoryScope) ? "Todas" : rule.CategoryScope)}</td>
-  <td>{(rule.RequiresReview ? "Sim" : "N\u00E3o")}</td>
   <td>
     <div class="inline-actions">
       <button class="ghost" type="button" data-edit-toggle="edit-{rule.Id}">Editar</button>
@@ -1498,7 +1607,7 @@ static string RenderRules(IReadOnlyList<ConversionRule> rules, string antiForger
   </td>
 </tr>
 <tr class="item-edit-row" id="edit-{rule.Id}" hidden>
-  <td colspan="9">
+  <td colspan="5">
     <div class="item-edit-card">
       <form method="post" action="/rules/{rule.Id}/save">
         {antiForgeryField}
@@ -1897,9 +2006,33 @@ static string CatalogQuerySuffix(string query, string category)
 
 static string CatalogCategoryClass(string category, string currentCategory)
 {
-    var normalizedExpected = TextNormalizer.NormalizeKey(category);
-    var normalizedCurrent = TextNormalizer.NormalizeKey(currentCategory);
+    var normalizedExpected = TextNormalizer.NormalizeCatalogCategoryKey(category);
+    var normalizedCurrent = TextNormalizer.NormalizeCatalogCategoryKey(currentCategory);
     return normalizedExpected == normalizedCurrent ? "catalog-category active" : "catalog-category";
+}
+
+static string CatalogCategoryColor(string category)
+{
+    return TextNormalizer.NormalizeCatalogCategoryKey(category) switch
+    {
+        "MERCEARIA BASICO" => "#d32f2f",
+        "MERCEARIA ALTO GIRO" => "#f48fb1",
+        "MATINAIS" => "#1e88e5",
+        "SOBREMESAS" => "#fb8c00",
+        "FRIOS" => "#2e7d32",
+        "HORTIFRUTI" => "#66bb6a",
+        "BEBIDAS" => "#d81b60",
+        "PERFUMARIA" => "#b71c1c",
+        "LIMPEZA" => "#9ccc65",
+        "BAZAR" => "#00acc1",
+        _ => "#8d6e63"
+    };
+}
+
+static string BuildCategoryFloatingLabel(int count, int total)
+{
+    var percentage = total <= 0 ? 0d : (double)count / total * 100d;
+    return $"{count} item(ns) • {percentage.ToString("0.#", CultureInfo.GetCultureInfo("pt-BR"))}%";
 }
 
 static bool LooksLikeEmail(string value)

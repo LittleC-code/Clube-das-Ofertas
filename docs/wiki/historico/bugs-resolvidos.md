@@ -2,12 +2,75 @@
 titulo: bugs-resolvidos
 categoria: historico
 criado: 2026-06-08
-atualizado: 2026-06-10
+atualizado: 2026-06-12
 fontes: []
 links: [../sintese/mojibake-codificacao.md]
 ---
 
 # Bugs resolvidos
+
+## 2026-06-12 - Startup falhava com erro cru de conexao em ::1:5432
+
+- Sintoma: ao iniciar a aplicacao sem o PostgreSQL local disponivel, o processo abortava no `SchemaInitializer` com `NpgsqlException` e `SocketException` apontando `Failed to connect to [::1]:5432`, sem indicar claramente os pre-requisitos operacionais do ambiente.
+- Causa raiz: a configuracao padrao usava `Host=localhost`, que pode resolver primeiro para IPv6, enquanto o ambiente local depende de um PostgreSQL levantado separadamente e de variaveis do `.env` carregadas manualmente antes do `dotnet run`.
+- Solucao: `AppDb` passou a normalizar `localhost` para `127.0.0.1` na conexao padrao e a encapsular a falha de abertura com uma mensagem acionavel em portugues brasileiro, orientando a subir o banco local e carregar as variaveis do `.env`.
+- Verificacao: `Test-NetConnection -ComputerName localhost -Port 5432` confirmou ausencia de listener em `127.0.0.1` e `::1`; `dotnet build ClubeDasOfertas.slnx` ficou bloqueado por restauracao NuGet sem acesso de rede no sandbox.
+
+## 2026-06-12 - Categoria Sobremesa aparecia no singular na UI do catalogo
+
+- Sintoma: partes da interface do catalogo ainda exibiam a categoria como `Sobremesa`, destoando do agrupamento desejado em `Sobremesas` e deixando a legenda do grafico inconsistente.
+- Causa raiz: a UI reutilizava o valor bruto vindo de `entry.Category` e do agrupamento lateral, sem uma camada de normalizacao de apresentacao para nomes de categoria.
+- Solucao: `Program.cs` passou a centralizar a exibicao das categorias em um helper que normaliza `Sobremesa` para `Sobremesas` e reaproveita esse nome tanto no grafico quanto no filtro lateral e na lista de itens.
+- Verificacao: `dotnet build ClubeDasOfertas.slnx` concluido com sucesso.
+
+## 2026-06-12 - Paleta de categorias caia toda na mesma cor de fallback
+
+- Sintoma: mesmo depois do ajuste visual, o catalogo ainda aparecia com a mesma cor em varias categorias, e `Sobremesa` nao se consolidava com `Sobremesas` de forma confiavel.
+- Causa raiz: o mapeamento de cor dependia de nomes exatos e a busca por categoria ainda comparava o valor bruto do banco; com isso, variacoes de acento, plural ou composicao textual escapavam do mapeamento canonico e voltavam para a cor padrao.
+- Solucao: `TextNormalizer` passou a expor uma chave canonica de categoria e um nome de exibicao compartilhados por `AppRepository` e `Program.cs`; o filtro, o agrupamento lateral, os cards e o grafico agora usam essa mesma normalizacao antes de comparar, agrupar e colorir.
+- Verificacao: `dotnet build ClubeDasOfertas.slnx` e `dotnet run --no-build --project tests\\ClubeDasOfertas.Tests\\ClubeDasOfertas.Tests.csproj`.
+
+## 2026-06-12 - Categoria combinada escondia Frios e sumia com o filtro Todos os itens
+
+- Sintoma: `Frios e Hortifruti` passou a aparecer como uma categoria so, `Frios` perdeu identidade propria, e a entrada de visao geral do catalogo deixou de ficar claramente separada das categorias coloridas.
+- Causa raiz: a canonizacao anterior juntava qualquer ocorrencia com `HORTIFRUTI` na chave `FRIOS E HORTIFRUTI`, e a navegacao lateral deixou a visao geral apenas como mais um link visualmente parecido com as categorias.
+- Solucao: a normalizacao foi revertida para consolidar os casos combinados em `Hortifruti`, mantendo `Frios` como categoria propria; o mapa de cores ganhou dois tons de verde distintos e o filtro `Todos os itens` voltou como entrada explicita, separada das categorias e com tooltip nativa de quantidade/percentual.
+- Verificacao: `dotnet build ClubeDasOfertas.slnx` e `dotnet run --no-build --project tests\\ClubeDasOfertas.Tests\\ClubeDasOfertas.Tests.csproj`.
+
+## 2026-06-12 - Selecionar Todos os itens zerava lista e gráfico do catálogo
+
+- Sintoma: ao deixar `Categoria atual: Todos os itens`, a tela do catálogo passava a mostrar `0 itens`, nenhum registro e nenhum gráfico, mesmo havendo base carregada.
+- Causa raiz: o valor visual `Todos os itens` estava sendo reaproveitado como valor de filtro no hidden field e no backend, em vez de voltar ao estado vazio que representa ausência de categoria.
+- Solucao: `TextNormalizer` ganhou um detector explícito para o filtro geral e `Program.cs`/`AppRepository.cs` passaram a converter `Todos os itens` e `Todas as categorias` em filtro vazio antes de buscar e reidratar a tela.
+- Verificacao: `dotnet build ClubeDasOfertas.slnx` e `dotnet run --no-build --project tests\\ClubeDasOfertas.Tests\\ClubeDasOfertas.Tests.csproj`.
+
+## 2026-06-12 - Bordas do gráfico ficavam serrilhadas e sem hover por fatia
+
+- Sintoma: o donut de categorias mostrava divisões visuais ruins entre as cores e não permitia descobrir a categoria exata ao passar o cursor sobre cada fatia.
+- Causa raiz: a versão com `conic-gradient` desenhava toda a pizza como um único fundo CSS, sem elementos interativos por segmento e com separação visual limitada entre as cores.
+- Solucao: o gráfico foi refeito em SVG com uma fatia por `circle`/stroke, gaps controlados entre segmentos e tooltip flutuante compartilhada entre fatias e linhas da legenda, mostrando categoria, quantidade e percentual.
+- Verificacao: `dotnet build ClubeDasOfertas.slnx` e `dotnet run --no-build --project tests\\ClubeDasOfertas.Tests\\ClubeDasOfertas.Tests.csproj`.
+
+## 2026-06-12 - Recorte branco aparecia entre as fatias do donut
+
+- Sintoma: depois da troca para SVG, algumas divisões do gráfico exibiam um recorte branco visível entre as cores, inclusive em cenários com apenas uma categoria.
+- Causa raiz: os gaps artificiais entre segmentos e o círculo-base claro ainda apareciam por baixo das fatias, expondo o fundo do gráfico.
+- Solucao: os segmentos passaram a fechar sem gap visual e o track claro foi removido do SVG; o stroke agora usa `butt` e, quando ha apenas uma categoria, a fatia ocupa a circunferência inteira sem emenda aparente.
+- Verificacao: `dotnet build ClubeDasOfertas.slnx` e `dotnet run --no-build --project tests\\ClubeDasOfertas.Tests\\ClubeDasOfertas.Tests.csproj`.
+
+## 2026-06-11 - Tooltip das regras ficou presa na tabela
+
+- Sintoma: ao passar o cursor sobre `Como acontece`, a informacao da regra ainda parecia uma barra vazia ou parte da propria lista, e a tabela seguia arriscando rolagem extra no hover.
+- Causa raiz: o conteudo completo ainda estava sendo desenhado dentro do `tablewrap`, o que prendia o balao ao fluxo da tabela e deixava a leitura inconsistente quando o container rolavel recalculava o layout.
+- Solucao: o preview resumido ficou na celula e o conteudo completo passou para um `<template>`; o balao agora e um overlay fixo no `body`, posicionado por JS sobre a propria celula e fora do fluxo da lista.
+- Verificacao: `dotnet build ClubeDasOfertas.slnx` e `dotnet run --project tests\ClubeDasOfertas.Tests\ClubeDasOfertas.Tests.csproj`.
+
+## 2026-06-11 - Coluna de pendencias ficava escondida na lista de campanhas
+
+- Sintoma: na pagina de campanhas, a coluna `Pendencias` ficava espremida ou parcialmente escondida, exigindo rolagem horizontal para enxergar a grade completa em larguras comuns de desktop.
+- Causa raiz: a listagem resumida usava larguras minimas, gaps, badges e botoes ainda grandes demais para a soma das seis colunas, especialmente sob os overrides tipograficos da `page-campaign`.
+- Solucao: o CSS da lista de campanhas em `src/ClubeDasOfertas.Web/Ui/HtmlView.cs` foi compactado com colunas mais estreitas, fonte menor nos cabecalhos e textos auxiliares, badges menores e acoes mais enxutas, mantendo o layout responsivo existente.
+- Verificacao: `dotnet build ClubeDasOfertas.slnx` concluido com sucesso.
 
 ## 2026-06-08 â€” Textos com mojibake na UI
 

@@ -467,10 +467,31 @@ public static class HtmlView
       gap: 12px;
       padding: 10px 12px;
       border: 1px solid var(--line);
+      border-left: 4px solid var(--category-accent, var(--line));
       border-radius: 8px;
       text-decoration: none;
       color: inherit;
       background: transparent;
+    }
+    .catalog-category-all {
+      --category-accent: #5f6368;
+      margin-bottom: 6px;
+      background: #fffef8;
+    }
+    .catalog-category-name {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      font-weight: 600;
+    }
+    .catalog-category-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      flex: 0 0 auto;
+      background: var(--category-accent, var(--brand));
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
     }
     .catalog-category:hover {
       background: var(--brand-soft);
@@ -481,6 +502,10 @@ public static class HtmlView
     .catalog-category.active {
       border-color: var(--brand);
       background: rgba(255, 237, 0, 0.28);
+    }
+    .catalog-category-all.active {
+      border-color: #5f6368;
+      background: rgba(95, 99, 104, 0.12);
     }
     .catalog-list {
       display: grid;
@@ -520,18 +545,23 @@ public static class HtmlView
     .catalog-chart-visual {
       width: 100%;
       height: 100%;
-      border-radius: 50%;
-      background: conic-gradient(var(--chart-stops));
-      box-shadow: 0 14px 28px rgba(0, 0, 0, 0.12);
-      position: relative;
+      display: block;
+      overflow: visible;
+      filter: drop-shadow(0 14px 28px rgba(0, 0, 0, 0.12));
     }
-    .catalog-chart-visual::after {
-      content: "";
-      position: absolute;
-      inset: 24%;
-      border-radius: 50%;
-      background: #fffef8;
-      box-shadow: inset 0 0 0 1px var(--line-soft);
+    .catalog-chart-segment {
+      fill: none;
+      stroke-linecap: butt;
+      transform: rotate(-90deg);
+      transform-origin: 100px 100px;
+      transition: opacity 0.18s ease, filter 0.18s ease;
+      cursor: pointer;
+    }
+    .catalog-chart-segment:hover,
+    .catalog-chart-segment:focus-visible {
+      opacity: 0.92;
+      filter: brightness(1.03);
+      outline: none;
     }
     .catalog-chart-total {
       position: absolute;
@@ -569,6 +599,7 @@ public static class HtmlView
       border: 1px solid var(--line-soft);
       border-radius: 10px;
       background: #fffef8;
+      cursor: pointer;
     }
     .catalog-chart-swatch {
       width: 14px;
@@ -585,6 +616,35 @@ public static class HtmlView
       color: var(--muted);
       white-space: nowrap;
     }
+    .catalog-chart-tooltip {
+      display: none;
+      position: fixed;
+      left: 0;
+      top: 0;
+      transform: translate(-50%, calc(-100% - 12px));
+      min-width: 180px;
+      max-width: min(280px, calc(100vw - 24px));
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      color: var(--text);
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.16);
+      z-index: 125;
+      pointer-events: none;
+    }
+    .catalog-chart-tooltip strong,
+    .catalog-chart-tooltip span {
+      display: block;
+    }
+    .catalog-chart-tooltip span {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .catalog-chart-tooltip[data-open="true"] {
+      display: block;
+    }
     .catalog-item {
       display: grid;
       grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr);
@@ -592,6 +652,7 @@ public static class HtmlView
       align-items: start;
       padding: 16px;
       border: 1px solid var(--line);
+      border-left: 4px solid var(--category-accent, var(--line));
       border-radius: 8px;
       background: #fffef8;
     }
@@ -617,6 +678,17 @@ public static class HtmlView
       display: block;
       word-break: break-word;
     }
+    .catalog-category-pill {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--category-accent, var(--brand)) 16%, #fffef8);
+      color: color-mix(in srgb, var(--category-accent, var(--text)) 72%, #2b2418);
+      font-weight: 700;
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--category-accent, var(--line)) 32%, transparent);
+    }
     .campaign-list {
       display: flex;
       flex-direction: column;
@@ -639,12 +711,12 @@ public static class HtmlView
     .campaign-list-head,
     .campaign-row {
       display: grid;
-      grid-template-columns: minmax(176px, 1.85fr) minmax(128px, 1.05fr) minmax(92px, 0.72fr) minmax(60px, 0.45fr) minmax(96px, 0.72fr) minmax(114px, 0.9fr);
-      gap: 10px;
+      grid-template-columns: minmax(164px, 1.95fr) minmax(118px, 1fr) minmax(82px, 0.64fr) minmax(54px, 0.38fr) minmax(88px, 0.58fr) minmax(102px, 0.76fr);
+      gap: 8px;
       align-items: center;
     }
     .campaign-list-head {
-      padding: 0 4px 12px;
+      padding: 0 2px 10px;
       color: var(--muted);
       font-size: 11px;
       font-weight: 700;
@@ -653,7 +725,7 @@ public static class HtmlView
       border-bottom: 1px solid var(--line);
     }
     .campaign-row {
-      padding: 16px 4px;
+      padding: 14px 2px;
       border-bottom: 1px solid var(--line-soft);
     }
     .campaign-row:last-child {
@@ -666,15 +738,20 @@ public static class HtmlView
     .campaign-cell strong {
       display: block;
       font-size: 14px;
-      line-height: 1.35;
+      line-height: 1.3;
     }
     .campaign-cell .muted {
       display: block;
-      margin-top: 4px;
+      margin-top: 3px;
       font-size: 12px;
+      line-height: 1.3;
     }
     .campaign-metric strong {
       font-size: 16px;
+    }
+    .campaign-list .badge {
+      padding: 2px 6px;
+      font-size: 12px;
     }
     .campaign-action {
       display: flex;
@@ -686,8 +763,8 @@ public static class HtmlView
     }
     .campaign-action .button,
     .campaign-action button {
-      min-height: 34px;
-      padding: 6px 10px;
+      min-height: 32px;
+      padding: 5px 8px;
       font-size: 13px;
     }
     .rules-tablewrap table {
@@ -695,17 +772,15 @@ public static class HtmlView
       table-layout: fixed;
     }
     .rules-tablewrap th:nth-child(1) { width: 88px; }
-    .rules-tablewrap th:nth-child(2) { width: 120px; }
-    .rules-tablewrap th:nth-child(3) { width: 90px; }
-    .rules-tablewrap th:nth-child(5) { width: 118px; }
-    .rules-tablewrap th:nth-child(6) { width: 90px; }
-    .rules-tablewrap th:nth-child(8) { width: 84px; }
-    .rules-tablewrap th:nth-child(9) { width: 188px; }
+    .rules-tablewrap th:nth-child(2) { width: 154px; }
+    .rules-tablewrap th:nth-child(4) { width: 118px; }
+    .rules-tablewrap th:nth-child(5) { width: 188px; }
     .rule-pattern-cell {
-      white-space: nowrap;
-      line-height: 1.45;
       position: relative;
       overflow: visible;
+      white-space: nowrap;
+      line-height: 1.45;
+      cursor: help;
     }
     .rule-pattern-preview {
       display: block;
@@ -717,33 +792,39 @@ public static class HtmlView
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .rule-pattern-hover {
+    .rule-pattern-overlay {
       display: none;
-      position: absolute;
-      left: 10px;
-      top: calc(100% - 6px);
-      min-width: min(420px, 70vw);
-      max-width: min(520px, 70vw);
-      padding: 8px 10px;
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: max-content;
+      transform: translate(-50%, -50%);
+      gap: 6px;
+      min-width: min(360px, calc(100vw - 24px));
+      max-width: min(560px, calc(100vw - 24px));
+      padding: 10px 12px;
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 10px;
       background: var(--panel);
-      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+      color: var(--text);
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.16);
       white-space: normal;
       word-break: break-word;
-      z-index: 8;
+      z-index: 120;
+      pointer-events: none;
     }
-    .rule-pattern-hover strong,
-    .rule-pattern-hover span {
+    .rule-pattern-overlay strong,
+    .rule-pattern-overlay span {
       display: block;
     }
-    .rule-pattern-hover span {
+    .rule-pattern-overlay span {
       margin-top: 6px;
       font-size: 11px;
       opacity: 0.82;
     }
-    .rule-pattern-cell:hover .rule-pattern-hover {
-      display: block;
+    .rule-pattern-overlay[data-open="true"] {
+      display: grid;
+      transform: translate(-50%, -50%);
     }
     .empty-state {
       padding: 18px;
@@ -797,6 +878,19 @@ public static class HtmlView
     body.page-campaign th,
     body.page-campaign .campaign-list-head,
     body.page-campaign label {
+      font-size: 12px;
+    }
+    body.page-campaign .campaign-list-head {
+      font-size: 12px;
+    }
+    body.page-campaign .campaign-cell .muted {
+      font-size: 12px;
+    }
+    body.page-campaign .campaign-list .badge {
+      font-size: 12px;
+    }
+    body.page-campaign .campaign-action .button,
+    body.page-campaign .campaign-action button {
       font-size: 13px;
     }
     body.page-campaign .stat,
@@ -1097,8 +1191,15 @@ public static class HtmlView
     {{body}}
   </main>
   {{footerBrand}}
+  <div id="rule-pattern-tooltip" class="rule-pattern-overlay" aria-hidden="true" data-open="false"></div>
+  <div id="catalog-chart-tooltip" class="catalog-chart-tooltip" aria-hidden="true" data-open="false"></div>
   <script>
     (() => {
+      const rulePatternTooltip = document.getElementById('rule-pattern-tooltip');
+      const catalogChartTooltip = document.getElementById('catalog-chart-tooltip');
+      let activeRulePatternCell = null;
+      let activeCatalogTooltipTarget = null;
+
       const openDatePicker = (input) => {
         if (!input || typeof input.showPicker !== 'function') {
           return;
@@ -1144,6 +1245,165 @@ public static class HtmlView
           select.appendChild(element);
         }
       };
+
+      const hideRulePatternTooltip = () => {
+        if (!rulePatternTooltip) {
+          return;
+        }
+
+        activeRulePatternCell = null;
+        rulePatternTooltip.dataset.open = 'false';
+        rulePatternTooltip.style.visibility = '';
+        rulePatternTooltip.replaceChildren();
+      };
+
+      const positionRulePatternTooltip = (cell) => {
+        if (!rulePatternTooltip) {
+          return;
+        }
+
+        const preview = cell.querySelector('.rule-pattern-preview');
+        const source = cell.querySelector('.rule-pattern-tooltip-source');
+        if (!(preview instanceof HTMLElement) || !(source instanceof HTMLTemplateElement)) {
+          hideRulePatternTooltip();
+          return;
+        }
+
+        rulePatternTooltip.replaceChildren(source.content.cloneNode(true));
+        rulePatternTooltip.dataset.open = 'true';
+        rulePatternTooltip.style.visibility = 'hidden';
+
+        const previewRect = preview.getBoundingClientRect();
+        const centerX = previewRect.left + previewRect.width / 2;
+        const centerY = previewRect.top + previewRect.height / 2;
+        rulePatternTooltip.style.left = `${centerX}px`;
+        rulePatternTooltip.style.top = `${centerY}px`;
+
+        const tooltipRect = rulePatternTooltip.getBoundingClientRect();
+        const margin = 12;
+        let left = centerX;
+        let top = centerY;
+
+        if (tooltipRect.left < margin) {
+          left += margin - tooltipRect.left;
+        } else if (tooltipRect.right > window.innerWidth - margin) {
+          left -= tooltipRect.right - (window.innerWidth - margin);
+        }
+
+        if (tooltipRect.top < margin) {
+          top += margin - tooltipRect.top;
+        } else if (tooltipRect.bottom > window.innerHeight - margin) {
+          top -= tooltipRect.bottom - (window.innerHeight - margin);
+        }
+
+        rulePatternTooltip.style.left = `${left}px`;
+        rulePatternTooltip.style.top = `${top}px`;
+        rulePatternTooltip.style.visibility = 'visible';
+        activeRulePatternCell = cell;
+      };
+
+      const refreshRulePatternTooltip = () => {
+        if (activeRulePatternCell) {
+          positionRulePatternTooltip(activeRulePatternCell);
+        }
+      };
+
+      const hideCatalogChartTooltip = () => {
+        if (!catalogChartTooltip) {
+          return;
+        }
+
+        activeCatalogTooltipTarget = null;
+        catalogChartTooltip.dataset.open = 'false';
+        catalogChartTooltip.style.visibility = '';
+        catalogChartTooltip.replaceChildren();
+      };
+
+      const positionCatalogChartTooltip = (target) => {
+        if (!catalogChartTooltip) {
+          return;
+        }
+
+        const title = target.getAttribute('data-chart-tooltip-title');
+        const meta = target.getAttribute('data-chart-tooltip-meta');
+        if (!title || !meta) {
+          hideCatalogChartTooltip();
+          return;
+        }
+
+        const strong = document.createElement('strong');
+        strong.textContent = title;
+        const span = document.createElement('span');
+        span.textContent = meta;
+        catalogChartTooltip.replaceChildren(strong, span);
+        catalogChartTooltip.dataset.open = 'true';
+        catalogChartTooltip.style.visibility = 'hidden';
+
+        const rect = target.getBoundingClientRect();
+        let left = rect.left + rect.width / 2;
+        let top = rect.top;
+        catalogChartTooltip.style.left = `${left}px`;
+        catalogChartTooltip.style.top = `${top}px`;
+
+        const tooltipRect = catalogChartTooltip.getBoundingClientRect();
+        const margin = 12;
+        if (tooltipRect.left < margin) {
+          left += margin - tooltipRect.left;
+        } else if (tooltipRect.right > window.innerWidth - margin) {
+          left -= tooltipRect.right - (window.innerWidth - margin);
+        }
+
+        if (tooltipRect.top < margin) {
+          top = rect.bottom + 12;
+          catalogChartTooltip.style.transform = 'translate(-50%, 0)';
+        } else {
+          catalogChartTooltip.style.transform = 'translate(-50%, calc(-100% - 12px))';
+        }
+
+        catalogChartTooltip.style.left = `${left}px`;
+        catalogChartTooltip.style.top = `${top}px`;
+        catalogChartTooltip.style.visibility = 'visible';
+        activeCatalogTooltipTarget = target;
+      };
+
+      const refreshCatalogChartTooltip = () => {
+        if (activeCatalogTooltipTarget) {
+          positionCatalogChartTooltip(activeCatalogTooltipTarget);
+        }
+      };
+
+      document.querySelectorAll('.rule-pattern-cell').forEach((cell) => {
+        cell.addEventListener('pointerenter', () => positionRulePatternTooltip(cell));
+        cell.addEventListener('pointerleave', hideRulePatternTooltip);
+        cell.addEventListener('focusin', () => positionRulePatternTooltip(cell));
+        cell.addEventListener('focusout', (event) => {
+          if (!cell.contains(event.relatedTarget)) {
+            hideRulePatternTooltip();
+          }
+        });
+      });
+
+      document.querySelectorAll('[data-chart-tooltip-title]').forEach((target) => {
+        target.addEventListener('pointerenter', () => positionCatalogChartTooltip(target));
+        target.addEventListener('pointerleave', hideCatalogChartTooltip);
+        target.addEventListener('focusin', () => positionCatalogChartTooltip(target));
+        target.addEventListener('focusout', (event) => {
+          if (!target.contains?.(event.relatedTarget)) {
+            hideCatalogChartTooltip();
+          }
+        });
+      });
+
+      document.addEventListener('scroll', refreshRulePatternTooltip, true);
+      document.addEventListener('scroll', refreshCatalogChartTooltip, true);
+      window.addEventListener('resize', refreshRulePatternTooltip);
+      window.addEventListener('resize', refreshCatalogChartTooltip);
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          hideRulePatternTooltip();
+          hideCatalogChartTooltip();
+        }
+      });
 
       document.querySelectorAll('form[data-sheet-selector-form]').forEach((form) => {
         const fileInput = form.querySelector('[data-sheet-file]');

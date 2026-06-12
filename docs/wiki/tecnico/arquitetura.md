@@ -2,12 +2,83 @@
 titulo: arquitetura
 categoria: tecnico
 criado: 2026-06-09
-atualizado: 2026-06-10
+atualizado: 2026-06-12
 fontes: []
-links: [../dominio/exportacao.md, ../historico/bugs-resolvidos.md]
+links: [../dominio/exportacao.md, ../dominio/campanha.md, ../dominio/item.md, ../historico/bugs-resolvidos.md]
 ---
 
 # Arquitetura
+
+## 2026-06-12 - Bootstrap do banco ficou mais explicito no startup
+
+- `AppDb` passou a normalizar a connection string padrao de `localhost` para `127.0.0.1`, reduzindo o risco de falha quando o PostgreSQL local aceita conexoes apenas em IPv4.
+- Quando a abertura de conexao falha, a excecao agora sobe como `InvalidOperationException` com orientacao operacional em portugues brasileiro, apontando os dois pre-requisitos do ambiente local: banco em execucao e variaveis do `.env` carregadas no processo que roda o `dotnet run`.
+- A mudanca nao mascara a falha real do Npgsql; ela apenas preserva a excecao original como inner exception e troca a mensagem de topo por um diagnostico acionavel.
+
+## 2026-06-12 - Campanhas passaram a aceitar inclusao manual de itens
+
+- `Program.cs` ganhou a rota `POST /campaigns/{campaignId}/items/add` e um formulario na tela de detalhe da campanha para inserir um item sem reimportar a planilha.
+- `CampaignItemEditorService` passou a criar o item manual, reaproveitar `CampaignImportService.EvaluateItem`, marcar a origem como `Manual` e registrar a inclusao no audit log.
+- `AppRepository` passou a persistir esse fluxo em uma transacao propria, incluindo um `ImportBatch` sintetico, a atualizacao de itens afetados e a insercao do novo item na mesma unidade de trabalho.
+- A reavaliacao de duplicidade continua acontecendo antes da gravacao final, para que um item manual novo nao deixe codigos repetidos sem marcacao.
+
+## 2026-06-12 - Regras de fardo e caixa passaram a dividir quantidade
+
+- `CampaignImportService.EvaluateItem` agora aplica a regra de package tanto no preco quanto na quantidade: o preco continua multiplicando pelo fator da regra e a quantidade passa a ser dividida pelo mesmo fator antes de ir para a tabela e para o CSV.
+- A divisao acontece somente quando uma regra de `Fardo`, `Caixa` ou a regra legada equivalente e encontrada, preservando o fluxo dos demais tipos de conversao.
+- Os testes passaram a cobrir a nova saida de quantidade para garantir que a conversao de package continue coerente ao lado do alerta e da multiplicacao de preco.
+
+## 2026-06-12 - Grafico do catalogo ganhou paleta fixa por categoria
+
+- A renderizacao do grafico de categorias em `Program.cs` deixou de usar uma paleta ciclica e passou a mapear cores fixas por nome de categoria, mantendo a leitura consistente entre filtros e recargas.
+- A normalizacao de exibicao agora trata `Sobremesa` como `Sobremesas` na legenda do grafico, no filtro lateral e nos cards dos itens, sem exigir migracao de dados persistidos.
+- O ajuste visual da lista `Campanhas criadas` permaneceu concentrado nos overrides de `HtmlView.cs`, com aumento discreto de fonte para cabecalhos, textos auxiliares, badges e botoes sem desfazer a compactacao recente da grade.
+- No refinamento seguinte, a mesma cor da categoria passou a aparecer tambem na navegacao lateral e nos cards dos itens do catalogo, com borda de destaque, ponto colorido e badge da categoria para que a mudanca fique perceptivel mesmo antes de chegar ao grafico.
+- A correção definitiva exigiu subir a canonizacao para `TextNormalizer`: filtro, lista lateral, cards e grafico agora compartilham a mesma chave normalizada de categoria, evitando que variantes como `Sobremesa` ou nomes com acento/formatacao diferente caiam todas na cor de fallback.
+- No ajuste seguinte, a categoria combinada `Frios e Hortifruti` foi revertida: a canonizacao passou a preservar `Frios` como categoria propria e a consolidar os casos combinados em `Hortifruti`, com dois tons de verde diferentes no mapa de cores.
+- O filtro lateral voltou a expor uma entrada explicita de `Todos os itens`, separada das categorias coloridas, e os links/linhas do grafico passaram a carregar tooltip nativa com quantidade e percentual para facilitar a leitura quando a visao geral estiver selecionada.
+- Para o filtro geral continuar funcional apos esse ajuste, `Todos os itens` e `Todas as categorias` passaram a ser tratados como ausencia de filtro antes de chegar ao repositório e antes de reidratar o formulario; isso evita que a string da UI seja reaproveitada como se fosse uma categoria real.
+- O grafico de categorias deixou de usar `conic-gradient` e passou a ser desenhado em SVG com segmentos de stroke e pequenos gaps entre as fatias; isso melhorou a nitidez das divisoes e permitiu hover direto na fatia com tooltip flutuante de categoria, quantidade e percentual, reutilizando o mesmo balão tambem na legenda.
+- No ajuste seguinte, os gaps artificiais e o track claro foram removidos do SVG para evitar recortes brancos entre as fatias; o donut passou a fechar os segmentos sem vazamento do fundo, inclusive quando so existe uma categoria.
+
+## 2026-06-11 - Overlay fixo da tooltip das regras com template
+
+- A coluna `Como acontece` ficou com apenas o preview resumido na celula, enquanto o conteudo completo passou a ficar guardado em um `<template>` para nao participar do fluxo da tabela.
+- O balao agora e um overlay fixo no `body`, reposicionado por `getBoundingClientRect` da celula em `hover` e `focus`, o que evita que o `tablewrap` crie barra extra ou recorte o conteudo.
+- O overlay continua sobre a propria regra, mas deixou de depender de HTML inline visivel dentro da grade para nao virar parte da lista.
+
+## 2026-06-11 - Tooltip da regra voltou para HTML e CSS
+
+- A informação de `Como acontece` na tabela de `Regras` voltou a ser renderizada junto da propria celula, com exibição controlada por `:hover` e `:focus` no CSS.
+- O balão deixou de depender de JavaScript para preencher texto ou calcular posição, o que elimina o risco de tooltip vazia e mantém o conteúdo sempre disponível no DOM.
+
+## 2026-06-11 - Tooltip da regra recebeu Base64 para evitar balao vazio
+
+- O overlay da regra passou a receber `pattern_input` e `pattern_regex` via Base64, reduzindo o risco de atributo HTML mal interpretado deixar a tooltip vazia.
+- O JS decodifica os valores e ainda usa a preview visivel da celula como fallback, mantendo a informacao sobreposta sem voltar para o fluxo da tabela.
+
+## 2026-06-11 - Tooltip da regra virou overlay flutuante
+
+- A previa expandida de `Como acontece` na tabela de `Regras` passou a ser um overlay fixo sobreposto ao `body`, posicionado por `getBoundingClientRect` da célula.
+- O overlay deixou de participar da altura da tabela, eliminando a barra de rolagem extra na ultima linha e mantendo a informacao como contexto visual externo à listagem.
+- A celula ficou apenas como gatilho e preview resumido, sem carregar o balao dentro da grade.
+
+## 2026-06-11 - Tooltip da regra centralizada sobre a propria linha
+
+- A tooltip de `Regras` foi recalibrada para ficar centrada sobre a propria celula, em vez de buscar ancoragem acima ou abaixo da linha.
+- A posicao continua sendo calculada no `body` por JS, mas agora o overlay usa o centro do gatilho como referencia visual principal.
+
+## 2026-06-11 - Lista principal de regras mostra apenas o essencial
+
+- A tabela principal de `Regras` passou a exibir somente `Status`, `Nome`, `Como acontece`, `Multiplicador` e as acoes de `Editar`, `Alternar` e `Excluir`.
+- Campos operacionais menos consultados na leitura rapida, como `Tipo`, `Unidade alvo`, `Categorias alvo` e `Exigir revisao`, permaneceram acessiveis apenas dentro do formulario de edicao inline da propria regra.
+- O `colspan` da linha expansivel e as larguras da `rules-tablewrap` foram recalibrados para a nova grade, reduzindo ruído visual sem alterar a logica de criacao, edicao ou alternancia das regras.
+
+## 2026-06-11 - Lista de campanhas compactada para manter colunas visiveis
+
+- A grade resumida de campanhas em `HtmlView.cs` teve as larguras minimas das colunas recalibradas para priorizar a visibilidade conjunta de `Campanha`, `Vigencia`, `Status`, `Itens`, `Pendencias` e `Acoes`.
+- A compactacao ficou restrita a tipografia, `gap`, `padding` e badges da propria listagem, sem mudar a estrutura mobile nem a logica de renderizacao em `Program.cs`.
+- A pagina `page-campaign` recebeu overrides especificos para preservar a fonte menor da listagem mesmo com os estilos tipograficos mais amplos usados no restante da tela.
 
 ## 2026-06-10 - Campanhas e regras ganharam filtros e acoes mais operacionais
 

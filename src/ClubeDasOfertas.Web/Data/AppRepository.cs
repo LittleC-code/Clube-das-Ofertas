@@ -168,15 +168,16 @@ WHERE id = @id;
     {
         var entries = new List<ProductCatalogEntry>();
         var normalized = TextNormalizer.NormalizeKey(query);
-        var normalizedCategory = TextNormalizer.NormalizeKey(category);
+        var normalizedCategory = TextNormalizer.IsAllCatalogItemsFilter(category)
+            ? string.Empty
+            : TextNormalizer.NormalizeCatalogCategoryKey(category);
 
         await using var connection = await db.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
 SELECT id, description_tabloid, normalized_description_tabloid, category, description_solidus,
        normalized_description_solidus, barcode, code_type, created_at, updated_at
 FROM product_catalog_entries
-WHERE (@category = '' OR UPPER(COALESCE(category, '')) = @category)
-  AND (
+WHERE (
     @query = ''
     OR normalized_description_tabloid LIKE '%' || @query || '%'
     OR normalized_description_solidus LIKE '%' || @query || '%'
@@ -186,12 +187,15 @@ ORDER BY description_tabloid, description_solidus
 """, connection);
         command.Parameters.AddWithValue("@query", normalized);
         command.Parameters.AddWithValue("@raw", query.Trim());
-        command.Parameters.AddWithValue("@category", normalizedCategory);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            entries.Add(ReadCatalog(reader));
+            var entry = ReadCatalog(reader);
+            if (string.IsNullOrWhiteSpace(normalizedCategory) || TextNormalizer.NormalizeCatalogCategoryKey(entry.Category) == normalizedCategory)
+            {
+                entries.Add(entry);
+            }
         }
 
         return entries;
@@ -569,37 +573,7 @@ WHERE id = @id;
         await using var connection = await db.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        foreach (var item in items)
-        {
-            await using var command = new NpgsqlCommand("""
-UPDATE campaign_items
-SET source_row = @source_row,
-    source = @source,
-    original_vigency = @original_vigency,
-    description_tabloid = @description_tabloid,
-    normalized_description_tabloid = @normalized_description_tabloid,
-    quantity_raw = @quantity_raw,
-    price_sale_raw = @price_sale_raw,
-    price_club_raw = @price_club_raw,
-    quantity = @quantity,
-    unit = @unit,
-    original_price_sale = @original_price_sale,
-    original_price_club = @original_price_club,
-    final_price_sale = @final_price_sale,
-    final_price_club = @final_price_club,
-    description_solidus = @description_solidus,
-    barcode = @barcode,
-    code_type = @code_type,
-    risk_flags = @risk_flags,
-    blocking_reasons = @blocking_reasons,
-    review_required = @review_required,
-    review_status = @review_status,
-    updated_at = @updated_at
-WHERE id = @id;
-""", connection, transaction);
-            AddCampaignItemParameters(command, item);
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
+        await UpdateCampaignItemsInTransactionAsync(items, connection, transaction, cancellationToken);
 
         await using (var updateCampaign = new NpgsqlCommand("""
 UPDATE campaigns
@@ -608,6 +582,59 @@ WHERE id = @campaign_id;
 """, connection, transaction))
         {
             updateCampaign.Parameters.AddWithValue("@campaign_id", items[0].CampaignId);
+            updateCampaign.Parameters.AddWithValue("@updated_at", DateTimeOffset.UtcNow);
+            await updateCampaign.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task AddManualCampaignItemAsync(ImportBatch batch, CampaignItem item, IReadOnlyList<CampaignItem> itemsToUpdate, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await db.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        await using (var insertBatch = new NpgsqlCommand("""
+INSERT INTO import_batches (id, campaign_id, original_file_name, imported_by, imported_at, row_count)
+VALUES (@id, @campaign_id, @original_file_name, @imported_by, @imported_at, @row_count);
+""", connection, transaction))
+        {
+            insertBatch.Parameters.AddWithValue("@id", batch.Id);
+            insertBatch.Parameters.AddWithValue("@campaign_id", batch.CampaignId);
+            insertBatch.Parameters.AddWithValue("@original_file_name", batch.OriginalFileName);
+            insertBatch.Parameters.AddWithValue("@imported_by", batch.ImportedBy);
+            insertBatch.Parameters.AddWithValue("@imported_at", batch.ImportedAt);
+            insertBatch.Parameters.AddWithValue("@row_count", batch.RowCount);
+            await insertBatch.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await UpdateCampaignItemsInTransactionAsync(itemsToUpdate, connection, transaction, cancellationToken);
+
+        await using (var insertItem = new NpgsqlCommand("""
+INSERT INTO campaign_items (
+    id, campaign_id, import_batch_id, source_row, source, original_vigency, description_tabloid,
+    normalized_description_tabloid, quantity_raw, price_sale_raw, price_club_raw, quantity, unit,
+    original_price_sale, original_price_club, final_price_sale, final_price_club, description_solidus,
+    barcode, code_type, risk_flags, blocking_reasons, review_required, review_status, created_at, updated_at)
+VALUES (
+    @id, @campaign_id, @import_batch_id, @source_row, @source, @original_vigency, @description_tabloid,
+    @normalized_description_tabloid, @quantity_raw, @price_sale_raw, @price_club_raw, @quantity, @unit,
+    @original_price_sale, @original_price_club, @final_price_sale, @final_price_club, @description_solidus,
+    @barcode, @code_type, @risk_flags, @blocking_reasons, @review_required, @review_status, @created_at, @updated_at);
+""", connection, transaction))
+        {
+            AddCampaignItemParameters(insertItem, item);
+            await insertItem.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var updateCampaign = new NpgsqlCommand("""
+UPDATE campaigns
+SET status = @status, updated_at = @updated_at
+WHERE id = @campaign_id;
+""", connection, transaction))
+        {
+            updateCampaign.Parameters.AddWithValue("@campaign_id", batch.CampaignId);
+            updateCampaign.Parameters.AddWithValue("@status", CampaignStatus.Imported);
             updateCampaign.Parameters.AddWithValue("@updated_at", DateTimeOffset.UtcNow);
             await updateCampaign.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -865,6 +892,41 @@ LIMIT 100;
         command.Parameters.AddWithValue("@review_status", item.ReviewStatus);
         command.Parameters.AddWithValue("@created_at", item.CreatedAt);
         command.Parameters.AddWithValue("@updated_at", item.UpdatedAt);
+    }
+
+    private static async Task UpdateCampaignItemsInTransactionAsync(IReadOnlyList<CampaignItem> items, NpgsqlConnection connection, NpgsqlTransaction transaction, CancellationToken cancellationToken)
+    {
+        foreach (var item in items)
+        {
+            await using var command = new NpgsqlCommand("""
+UPDATE campaign_items
+SET source_row = @source_row,
+    source = @source,
+    original_vigency = @original_vigency,
+    description_tabloid = @description_tabloid,
+    normalized_description_tabloid = @normalized_description_tabloid,
+    quantity_raw = @quantity_raw,
+    price_sale_raw = @price_sale_raw,
+    price_club_raw = @price_club_raw,
+    quantity = @quantity,
+    unit = @unit,
+    original_price_sale = @original_price_sale,
+    original_price_club = @original_price_club,
+    final_price_sale = @final_price_sale,
+    final_price_club = @final_price_club,
+    description_solidus = @description_solidus,
+    barcode = @barcode,
+    code_type = @code_type,
+    risk_flags = @risk_flags,
+    blocking_reasons = @blocking_reasons,
+    review_required = @review_required,
+    review_status = @review_status,
+    updated_at = @updated_at
+WHERE id = @id;
+""", connection, transaction);
+            AddCampaignItemParameters(command, item);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
     }
 
     private static string Pack(IReadOnlyList<string> values)
