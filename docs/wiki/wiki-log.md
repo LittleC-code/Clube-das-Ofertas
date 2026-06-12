@@ -451,3 +451,13 @@ Paginas tecnicas atualizadas: nenhuma
 Paginas de dominio atualizadas: nenhuma
 Paginas de historico atualizadas: nenhuma
 Aprendizados registrados: o conjunto atual de alteracoes compilou com sucesso; a suite local passou via `dotnet run --no-build` porque havia um binario de web app em uso por outro processo durante a tentativa com rebuild.
+
+## [2026-06-12] sessao-iniciada | Diagnosticar aplicacao fora do ar apos publicacao
+Tarefa: verificar por que a aplicacao deixou de iniciar no ambiente local e corrigir a causa quando possivel.
+Paginas lidas: wiki-index.md, wiki-log.md, tecnico/arquitetura.md, historico/bugs-resolvidos.md
+
+## [2026-06-12] pós-tarefa | Identificar banco local parado como causa da indisponibilidade
+Paginas tecnicas atualizadas: nenhuma
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: a aplicacao estava saudavel do lado do codigo; o bloqueio atual veio do servico `postgresql-x64-16`, que existe na maquina mas estava parado e exige privilegio administrativo para ser reiniciado.
