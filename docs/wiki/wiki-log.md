@@ -461,3 +461,128 @@ Paginas tecnicas atualizadas: nenhuma
 Paginas de dominio atualizadas: nenhuma
 Paginas de historico atualizadas: nenhuma
 Aprendizados registrados: a aplicacao estava saudavel do lado do codigo; o bloqueio atual veio do servico `postgresql-x64-16`, que existe na maquina mas estava parado e exige privilegio administrativo para ser reiniciado.
+
+## [2026-06-25] sessao-iniciada | Corrigir borda branca no rodape
+Tarefa: ajustar as dimensoes da pagina para evitar sobra branca no rodape em diferentes resolucoes de tela.
+Paginas lidas: wiki-index.md, wiki-log.md, WIKI_GOVERNANCE.md, tecnico/arquitetura.md, historico/bugs-resolvidos.md
+
+## [2026-06-25] pós-tarefa | Corrigir borda branca no rodape
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: historico/bugs-resolvidos.md
+Aprendizados registrados: quando um elemento decorativo fixo muda de tamanho conforme a viewport, a folga do layout nao pode ficar hardcoded; atrelar o espaco ao tamanho real da marca elimina a sobra branca sem perder o respiro do rodape.
+
+
+## [2026-06-25] sessao-iniciada | Tornar menu lateral expansivel por hover
+Tarefa: trocar o menu de clique por um painel lateral dinamico que expande no hover, mantendo so o icone do menu quando recolhido.
+Paginas lidas: wiki-index.md, wiki-log.md, tecnico/arquitetura.md
+
+## [2026-06-25] pós-tarefa | Tornar menu lateral expansivel por hover
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: para um menu recolhido que precisa funcionar tanto em desktop quanto em toque, o hover pode cuidar da expansao visual principal, mas um estado `data-open` com `aria-expanded` evita regressao de acessibilidade e nao exige um dropdown separado.
+
+
+## [2026-06-25] sessao-iniciada | Recolocar menu no cabecalho com painel no hover
+Tarefa: manter o menu no cabecalho, preservar o titulo da pagina ao centro e abrir o painel de navegacao ao passar o cursor sobre o botao do menu.
+Paginas lidas: wiki-index.md, wiki-log.md, tecnico/arquitetura.md
+
+## [2026-06-25] pós-tarefa | Recolocar menu no cabecalho com painel no hover
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: para manter o titulo realmente no cabecalho e ainda oferecer hover navigation, o caminho mais estavel foi usar um trigger compacto no grid do header e deixar o painel como dropdown absoluto ancorado no proprio botao, em vez de um trilho lateral.
+
+
+## [2026-06-25] sessao-iniciada | Corrigir fechamento prematuro do menu no hover
+Tarefa: impedir que o painel do menu feche quando o cursor sai do botao e vai em direcao aos links do painel.
+Paginas lidas: wiki-index.md, wiki-log.md
+
+## [2026-06-25] pós-tarefa | Corrigir fechamento prematuro do menu no hover
+Paginas tecnicas atualizadas: nenhuma
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: historico/bugs-resolvidos.md
+Aprendizados registrados: em menus abertos por hover, um espacamento visual entre gatilho e painel precisa ser coberto por uma area de transicao; sem essa ponte, o dropdown fecha no caminho mesmo quando a logica do hover esta correta.
+
+## [2026-06-25] consulta | Onde encaixar cadastro manual de item no catalogo
+Paginas consultadas: wiki-index.md, wiki-log.md, tecnico/arquitetura.md, dominio/item.md, FLUXOGRAMA.md
+Pagina de sintese criada: nenhuma
+
+## [2026-06-25] sessao-iniciada | Adicionar cadastro manual no catalogo
+Tarefa: permitir cadastrar item manualmente na propria tela do catalogo, preservando busca e categoria atuais apos salvar.
+Paginas lidas: wiki-index.md, wiki-log.md, tecnico/arquitetura.md, dominio/item.md, FLUXOGRAMA.md
+
+## [2026-06-25] pós-tarefa | Adicionar cadastro manual no catalogo
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: como o catalogo ja centraliza importacao, busca e navegacao por categoria, o fluxo manual ficou mais natural como formulario inline na mesma sidebar; reaproveitar o mesmo upsert da importacao reduziu o risco de divergencia entre cadastro manual e carga em massa.
+
+## [2026-06-25] sessao-iniciada | Refinar seletor de categoria do cadastro manual
+Tarefa: trocar o campo nativo de categoria por um painel visual com as categorias disponiveis e a mesma dinamica cromatica do catalogo.
+Paginas lidas: wiki-index.md, wiki-log.md
+
+## [2026-06-25] pós-tarefa | Refinar seletor de categoria do cadastro manual
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: para categorias conhecidas do catalogo, um seletor visual com painel proprio comunica melhor a paleta e evita a aparencia crua do dropdown nativo; manter um fallback simples quando a lista estiver vazia protege o primeiro cadastro do ambiente.
+
+
+## [2026-06-25] consulta | Escolher formato da exportacao para tabloide e envio
+Paginas consultadas: wiki-index.md, wiki-log.md, dominio/exportacao.md
+Pagina de sintese criada: nenhuma
+
+## [2026-06-25] pós-tarefa | Permitir selecao de colunas na exportacao CSV
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: dominio/exportacao.md
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: a mesma campanha pode exigir saídas diferentes para CRM e para circulação operacional; manter um catálogo fixo de colunas exportáveis e deixar a UI apenas filtrar esse conjunto preserva compatibilidade do CSV sem engessar o operador.
+
+## [2026-06-25] consulta | Analisar formula da aba do tabloide para cadastro no CRM
+Paginas consultadas: wiki-index.md, wiki-log.md, dominio/exportacao.md, CHECK LIST - Clube Das Ofertas.xlsm
+Pagina de sintese criada: nenhuma
+
+## [2026-06-25] pós-tarefa | Adicionar presets de exportacao para lojas e interno
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: dominio/exportacao.md
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: quando o mesmo CSV atende dois usos operacionais diferentes, presets leves na propria UI resolvem o dia a dia sem duplicar rotas; deixar a definicao dos presets no servico evita que a regra de negocio fique presa ao JavaScript da tela.
+
+## [2026-06-25] pós-tarefa | Tornar a escolha de exportacao mais orientada por destino
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: dominio/exportacao.md
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: em fluxo operacional, rotulos orientados por destino final ajudam mais do que nomes tecnicos; quando a regra ja esta estavel, ajustar a microcopia melhora a usabilidade sem alterar a logica.
+
+## [2026-06-25] pós-tarefa | Adicionar botoes rapidos de exportacao por destino
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: dominio/exportacao.md
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: quando ha um preset dominante por uso, um botao de envio direto reduz cliques e erro operacional; manter a exportacao personalizada ao lado preserva flexibilidade sem esconder o caminho padrao.
+
+## [2026-06-25] pós-tarefa | Criar exportacao XLSX para lojas
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: dominio/exportacao.md
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: quando o operador precisa proximidade visual com uma planilha modelo, o limite deixa de ser a selecao de colunas e passa a ser o proprio formato; manter `CSV` para CRM e adicionar `XLSX` para lojas separa bem os dois objetivos sem confundir o fluxo.
+
+## [2026-06-25] pós-tarefa | Corrigir reparo do Excel no XLSX de lojas
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: dominio/exportacao.md
+Paginas de historico atualizadas: historico/bugs-resolvidos.md
+Aprendizados registrados: em exportacao OpenXML manual, pequenos desvios de ordem estrutural no `worksheet` ja bastam para o Excel abrir em modo de reparo; validar a ordem dos nos e higienizar texto para XML reduz esse risco sem depender de biblioteca externa.
+
+## [2026-06-25] pós-tarefa | Trocar exportacao interna rapida de CSV para XLSX
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: dominio/exportacao.md
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: quando o arquivo interno precisa espelhar a aba operacional do tabloide, vale mais gerar um `XLSX` aderente ao layout real do que insistir em um `CSV` completo; separar o caminho rapido em `XLSX` e manter o `CSV` apenas como exportacao personalizada preserva flexibilidade sem confundir o uso principal.
+
+## [2026-06-25] pós-tarefa | Corrigir sobreposicao de texto no painel de exportacao
+Paginas tecnicas atualizadas: nenhuma
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: historico/bugs-resolvidos.md
+Aprendizados registrados: componentes visuais baseados em `button` precisam neutralizar herancas como `white-space: nowrap` quando passam a carregar textos descritivos; sem isso, larguras intermediarias quebram a leitura mesmo quando o grid responsivo esta correto.
+

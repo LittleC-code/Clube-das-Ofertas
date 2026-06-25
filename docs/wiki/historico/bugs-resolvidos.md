@@ -9,6 +9,34 @@ links: [../sintese/mojibake-codificacao.md]
 
 # Bugs resolvidos
 
+## 2026-06-25 - Painel de destino da exportacao sobrepunha e cortava textos
+
+- Sintoma: no bloco `Escolher destino da exportacao`, os nomes dos presets e os textos explicativos ficavam sobrepostos ou cortados, o que dificultava entender a finalidade de cada opcao.
+- Causa raiz: os cards de preset e os botoes rapidos herdavam `white-space: nowrap` dos estilos globais de botao; com textos longos e larguras intermediarias, o conteudo deixava de quebrar linha dentro do proprio card.
+- Solucao: `HtmlView.cs` passou a liberar quebra de linha e `overflow-wrap` nos cards e botoes da exportacao, alem de trocar a area de acoes para um grid responsivo com `min-width: 0`.
+- Verificacao: `dotnet build --no-restore /p:UseSharedCompilation=false ClubeDasOfertas.slnx`; `dotnet run --no-build --project tests\\ClubeDasOfertas.Tests\\ClubeDasOfertas.Tests.csproj` falhou por um teste preexistente da exportacao interna em XLSX, nao relacionado ao ajuste visual, e `dotnet run --project tests\\ClubeDasOfertas.Tests\\ClubeDasOfertas.Tests.csproj` ficou bloqueado por restauracao NuGet sem acesso de rede no ambiente.
+
+## 2026-06-25 - Excel pedia reparo ao abrir o XLSX exportado para lojas
+
+- Sintoma: ao abrir o arquivo `clube_ofertas_lojas_*.xlsx`, o Excel exibia a mensagem de reparo de conteudo antes de carregar a planilha.
+- Causa raiz: o `worksheet` OpenXML era serializado manualmente com a ordem estrutural incorreta, emitindo `mergeCells` antes de `autoFilter`; alem disso, o texto das celulas nao filtrava caracteres invalidos para XML.
+- Solucao: `ExportService` passou a gerar `autoFilter` antes de `mergeCells` e a sanear o conteudo textual das celulas antes de escapar o XML.
+- Verificacao: `dotnet build --no-restore /p:UseSharedCompilation=false ClubeDasOfertas.slnx` e `dotnet run --no-build --project tests\\ClubeDasOfertas.Tests\\ClubeDasOfertas.Tests.csproj`.
+
+## 2026-06-25 - Painel do menu fechava antes do cursor chegar nos links
+
+- Sintoma: ao passar o cursor sobre o botao do menu no cabecalho, o painel abria, mas fechava assim que o mouse seguia em direcao aos links, impedindo o clique nas paginas.
+- Causa raiz: o dropdown estava posicionado com um espacamento vertical abaixo do gatilho (`top: calc(100% + 12px)`), criando um vao sem area hover entre o botao e o painel.
+- Solucao: o container `.menu-shell` passou a renderizar uma ponte invisivel via `::after`, cobrindo o intervalo entre o gatilho e o painel para preservar o estado de hover durante o movimento do cursor.
+- Verificacao: `dotnet build --no-restore /p:UseSharedCompilation=false ClubeDasOfertas.slnx` e `dotnet run --no-restore --project tests\\ClubeDasOfertas.Tests\\ClubeDasOfertas.Tests.csproj`.
+
+## 2026-06-25 - Rodape deixava uma sobra branca exagerada em algumas resolucoes
+
+- Sintoma: em determinadas alturas/larguras de tela, a area final da pagina ficava com uma sobra clara muito maior que o necessario acima do rodape visual, dando a impressao de uma borda branca no fim da tela.
+- Causa raiz: o layout global reservava sempre `96px` de `padding-bottom` no `main` para proteger a marca fixa do rodape, mesmo quando a imagem renderizada estava bem menor naquele viewport.
+- Solucao: o `HtmlView.cs` passou a calcular a folga inferior a partir do tamanho responsivo real da imagem do rodape e tambem garantiu altura minima de viewport em `html`/`body`, reduzindo a sobra sem remover a marca fixa.
+- Verificacao: `dotnet build ClubeDasOfertas.slnx` e `dotnet run --project tests\\ClubeDasOfertas.Tests\\ClubeDasOfertas.Tests.csproj`.
+
 ## 2026-06-12 - Startup falhava com erro cru de conexao em ::1:5432
 
 - Sintoma: ao iniciar a aplicacao sem o PostgreSQL local disponivel, o processo abortava no `SchemaInitializer` com `NpgsqlException` e `SocketException` apontando `Failed to connect to [::1]:5432`, sem indicar claramente os pre-requisitos operacionais do ambiente.

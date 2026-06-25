@@ -466,9 +466,17 @@ CREATE TABLE IF NOT EXISTS export_batches (
     exported_by uuid NOT NULL REFERENCES users(id),
     exported_at timestamptz NOT NULL,
     file_name text NOT NULL,
+    content_type text NOT NULL DEFAULT 'text/csv; charset=utf-8',
+    storage_kind text NOT NULL DEFAULT 'text',
     content text NOT NULL,
     row_count integer NOT NULL
 );
+
+ALTER TABLE export_batches
+    ADD COLUMN IF NOT EXISTS content_type text NOT NULL DEFAULT 'text/csv; charset=utf-8';
+
+ALTER TABLE export_batches
+    ADD COLUMN IF NOT EXISTS storage_kind text NOT NULL DEFAULT 'text';
 
 CREATE TABLE IF NOT EXISTS audit_logs (
     id uuid PRIMARY KEY,

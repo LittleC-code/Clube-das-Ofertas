@@ -621,9 +621,39 @@ app.MapPost("/campaigns/{id:guid}/export", async (Guid id, HttpContext context, 
         return RedirectWithNotice("/campaigns", "Campanha não encontrada.");
     }
 
+    var form = await context.Request.ReadFormAsync(cancellationToken);
+    var filter = form["filter"].ToString();
+    var query = form["q"].ToString();
     var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
-    var export = await exportService.ExportAsync(campaign, currentUser, cancellationToken);
-    return Results.Redirect($"/exports/{export.Id}/download");
+
+    try
+    {
+        var format = form["format"].ToString().Trim();
+        var preset = form["preset"].ToString().Trim();
+        ExportBatch export;
+        if (string.Equals(format, "xlsx", StringComparison.OrdinalIgnoreCase))
+        {
+            export = string.Equals(preset, "interno-crm", StringComparison.OrdinalIgnoreCase)
+                ? await exportService.ExportInternalWorkbookAsync(campaign, currentUser, cancellationToken)
+                : await exportService.ExportStoreWorkbookAsync(campaign, currentUser, cancellationToken);
+        }
+        else
+        {
+            var selectedColumns = string.IsNullOrWhiteSpace(preset)
+                ? form["columns"]
+                    .Where(static value => !string.IsNullOrWhiteSpace(value))
+                    .Select(static value => value!)
+                    .ToArray()
+                : ExportService.GetPresetColumns(preset);
+            export = await exportService.ExportAsync(campaign, currentUser, selectedColumns, cancellationToken);
+        }
+
+        return Results.Redirect($"/exports/{export.Id}/download");
+    }
+    catch (InvalidOperationException ex)
+    {
+        return RedirectWithNotice(BuildCampaignPath(campaign.Id, filter, query), ex.Message);
+    }
 }).RequireAuthorization();
 
 app.MapGet("/exports/{id:guid}/download", async (Guid id, AppRepository repository, CancellationToken cancellationToken) =>
@@ -634,8 +664,10 @@ app.MapGet("/exports/{id:guid}/download", async (Guid id, AppRepository reposito
         return Results.NotFound();
     }
 
-    var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(export.Content)).ToArray();
-    return Results.File(bytes, "text/csv; charset=utf-8", export.FileName);
+    var bytes = string.Equals(export.StorageKind, "base64", StringComparison.OrdinalIgnoreCase)
+        ? Convert.FromBase64String(export.Content)
+        : Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(export.Content)).ToArray();
+    return Results.File(bytes, export.ContentType, export.FileName);
 }).RequireAuthorization();
 
 app.MapGet("/catalog", async (string? q, string? category, HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
@@ -678,6 +710,50 @@ app.MapPost("/catalog/import", async (HttpContext context, AppRepository reposit
     {
         return RedirectWithNotice("/catalog", ex.Message);
     }
+}).RequireAuthorization("AdminOnly");
+
+app.MapPost("/catalog/create", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
+{
+    await antiforgery.ValidateRequestAsync(context);
+    var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
+    var form = await context.Request.ReadFormAsync(cancellationToken);
+    var descriptionTabloid = form["description_tabloid"].ToString().Trim();
+    var categoryName = form["category_name"].ToString().Trim();
+    var descriptionSolidus = form["description_solidus"].ToString().Trim();
+    var barcode = form["barcode"].ToString().Trim();
+    var currentQuery = form["current_query"].ToString();
+    var currentCategory = form["current_category"].ToString();
+    var redirectPath = BuildCatalogPath(currentQuery, currentCategory);
+
+    if (string.IsNullOrWhiteSpace(descriptionTabloid) || string.IsNullOrWhiteSpace(categoryName) || string.IsNullOrWhiteSpace(barcode))
+    {
+        return RedirectWithNotice(redirectPath, "Descricao tabloide, categoria e codigo de barras sao obrigatorios.");
+    }
+
+    var codeType = Parsing.CodeType(barcode);
+    if (string.IsNullOrWhiteSpace(codeType))
+    {
+        return RedirectWithNotice(redirectPath, "Informe um codigo de barras com digitos validos.");
+    }
+
+    var resolvedSolidus = string.IsNullOrWhiteSpace(descriptionSolidus)
+        ? descriptionTabloid
+        : descriptionSolidus;
+
+    await repository.UpsertCatalogAsync(
+        [new CatalogImportRow(0, descriptionTabloid, categoryName, resolvedSolidus, barcode)],
+        cancellationToken);
+
+    await repository.AddAuditAsync(
+        currentUser.Id,
+        currentUser.Email,
+        "Cadastrou item no catalogo",
+        "ProductCatalog",
+        null,
+        $"{descriptionTabloid} ({barcode})",
+        cancellationToken);
+
+    return RedirectWithNotice(redirectPath, "Item do catalogo cadastrado ou atualizado.");
 }).RequireAuthorization("AdminOnly");
 
 app.MapGet("/rules", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
@@ -951,17 +1027,21 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
     var queryField = $"""<input type="hidden" name="q" value="{HtmlView.E(normalizedQuery)}">""";
     var visibleReviewableItems = items.Count(IsReviewableItem);
     var exportWarning = stats.BlockingItems > 0
-        ? $"""<div class="toolbar-note">{HtmlView.Badge($"{CountLabel(stats.BlockingItems, "item", "itens")} com pendências serão exportados com riscos e pendências no CSV.", "danger")}</div>"""
+        ? $"""<div class="toolbar-note">{HtmlView.Badge($"{CountLabel(stats.BlockingItems, "item", "itens")} com pendências serão exportados com riscos e pendências no arquivo.", "danger")}</div>"""
         : "";
     var exportConfirm = stats.BlockingItems > 0
-        ? $""" onsubmit="return confirm('Esta campanha possui {CountLabel(stats.BlockingItems, "item", "itens")} com pendências. O CSV será exportado mesmo assim, incluindo riscos e pendências. Deseja continuar?');" """
+        ? $""" onsubmit="return confirm('Esta campanha possui {CountLabel(stats.BlockingItems, "item", "itens")} com pendências. A exportação seguirá mesmo assim, incluindo riscos e pendências. Deseja continuar?');" """
         : "";
-    var exportLabel = stats.BlockingItems > 0 ? "Exportar CSV com pendências" : "Exportar CSV";
+    var exportLabel = stats.BlockingItems > 0 ? "Exportar CSV personalizado com pendências" : "Exportar CSV personalizado";
+    var exportColumnsPanel = RenderExportColumnsPanel();
     var exportButton = stats.TotalItems > 0
         ? $"""
 <form method="post" action="/campaigns/{campaign.Id}/export"{exportConfirm}>
   {antiForgeryField}
-  <button type="submit">{exportLabel}</button>
+  {filterField}
+  {queryField}
+  {exportColumnsPanel}
+  <button type="submit" onclick="this.form.elements['format'].value='';">{exportLabel}</button>
 </form>
 """
         : """<span class="button secondary">Sem itens para exportar</span>""";
@@ -1195,6 +1275,58 @@ static string RenderCampaignItemsTableBody(Campaign campaign, IReadOnlyList<Camp
     return body.ToString();
 }
 
+static string RenderExportColumnsPanel()
+{
+    var builder = new StringBuilder();
+    builder.AppendLine("""
+<details class="export-columns-picker" data-export-columns-picker>
+  <summary>Escolher destino da exportação</summary>
+  <div class="export-columns-picker-panel">
+    <p class="muted">Escolha primeiro para onde esse arquivo vai. Se precisar, depois ajuste manualmente as colunas antes de exportar.</p>
+    <div class="export-preset-list">
+""");
+
+    foreach (var preset in ExportService.AvailablePresets)
+    {
+        var joinedColumns = string.Join(',', preset.ColumnKeys);
+        builder.AppendLine($"""
+      <button type="button" class="export-preset-button{(preset.Key == "interno-crm" ? " active" : "")}" data-export-preset data-preset-key="{HtmlView.E(preset.Key)}" data-preset-columns="{HtmlView.E(joinedColumns)}" aria-pressed="{(preset.Key == "interno-crm" ? "true" : "false")}">
+        <strong>{HtmlView.E(preset.Label)}</strong>
+        <span>{HtmlView.E(preset.Description)}</span>
+      </button>
+""");
+    }
+
+    builder.AppendLine("""
+    </div>
+    <div class="export-preset-actions">
+      <button type="submit" class="secondary" name="preset" value="lojas" onclick="this.form.elements['format'].value='xlsx';">Exportar XLSX para lojas</button>
+      <button type="submit" class="secondary" name="preset" value="interno-crm" onclick="this.form.elements['format'].value='xlsx';">Exportar XLSX para uso interno e CRM</button>
+    </div>
+    <input type="hidden" name="format" value="">
+    <p class="muted">Se precisar sair do padrão, ajuste as colunas abaixo e use a exportação personalizada.</p>
+    <div class="export-columns-grid">
+""");
+
+    foreach (var column in ExportService.AvailableColumns)
+    {
+        builder.AppendLine($"""
+      <label class="export-column-option">
+        <input type="checkbox" name="columns" value="{HtmlView.E(column.Key)}" data-export-column="{HtmlView.E(column.Key)}" checked>
+        <span>{HtmlView.E(column.Label)}</span>
+      </label>
+""");
+    }
+
+    builder.AppendLine("""
+    </div>
+  </div>
+</details>
+""");
+
+    return builder.ToString();
+}
+
 static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, string filter, string query, string antiForgeryField)
 {
     var filterField = $"""<input type="hidden" name="filter" value="{HtmlView.E(filter)}">""";
@@ -1335,6 +1467,21 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
         .ToList();
     var totalCatalogItems = categories.Sum(x => x.Count);
     var categoryChart = RenderCatalogCategoryChart(entries);
+    var manualCategoryPrefill = string.IsNullOrWhiteSpace(selectedCategory)
+        ? groupedCategories.FirstOrDefault().Category ?? ""
+        : selectedCategoryLabel;
+    var categoryPickerOptions = string.Join(
+        Environment.NewLine,
+        groupedCategories.Select(item =>
+        {
+            var categoryColor = CatalogCategoryColor(item.Category);
+            return $"""
+            <button type="button" class="catalog-category-picker-option" data-category-picker-option data-category-value="{HtmlView.E(item.Category)}" style="--category-accent:{categoryColor}">
+              <span class="catalog-category-name"><span class="catalog-category-dot" aria-hidden="true"></span>{HtmlView.E(item.Category)}</span>
+              <strong>{item.Count}</strong>
+            </button>
+""";
+        }));
     var body = new StringBuilder();
     body.AppendLine($$"""
 <div class="catalog-layout">
@@ -1366,6 +1513,48 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
       <div class="field"><label>Arquivo com a aba Base - Cód. Barras ou CSV equivalente</label><input type="file" name="file" accept=".csv,.txt,.xlsx,.xlsm" required></div>
       <button type="submit">Importar catálogo</button>
     </form>
+    </div>
+    <div class="catalog-sidebar-section">
+      <details class="catalog-manual-entry">
+        <summary class="catalog-manual-entry-toggle">Cadastrar item manualmente</summary>
+        <form method="post" action="/catalog/create" class="catalog-manual-entry-form">
+          {{antiForgeryField}}
+          <input type="hidden" name="current_query" value="{{HtmlView.E(query)}}">
+          <input type="hidden" name="current_category" value="{{HtmlView.E(selectedCategory)}}">
+          <div class="field">
+            <label>Descricao tabloide</label>
+            <input name="description_tabloid" required placeholder="Arroz tipo 1 5kg">
+          </div>
+          <div class="field">
+            <label>Categoria</label>
+            {{(groupedCategories.Count == 0
+                ? """<input name="category_name" required placeholder="Mercearia Basico">"""
+                : $"""
+            <details class="catalog-category-picker" data-category-picker>
+              <summary class="catalog-category-picker-trigger" data-category-picker-trigger>
+                <span class="catalog-category-name"><span class="catalog-category-dot" aria-hidden="true"></span><span data-category-picker-label>{HtmlView.E(manualCategoryPrefill)}</span></span>
+              </summary>
+              <div class="catalog-category-picker-panel">
+                {categoryPickerOptions}
+              </div>
+            </details>
+            <input type="hidden" name="category_name" value="{HtmlView.E(manualCategoryPrefill)}" data-category-picker-input required>
+""")}}
+          </div>
+          <div class="field">
+            <label>Descricao Solidus</label>
+            <input name="description_solidus" placeholder="Opcional. Se vazio, usa a descricao tabloide.">
+          </div>
+          <div class="field">
+            <label>Codigo de barras</label>
+            <input name="barcode" inputmode="numeric" required placeholder="7891234567890">
+          </div>
+          <div class="form-actions">
+            <button type="submit">Salvar item</button>
+            <span class="muted">O tipo do codigo e calculado automaticamente.</span>
+          </div>
+        </form>
+      </details>
     </div>
     <div class="catalog-sidebar-section">
       <h2>Categorias</h2>
@@ -1928,16 +2117,17 @@ static string DisplayRuleName(string ruleName)
     };
 }
 
-static string DisplayAuditAction(string action)
-{
-    return action switch
+    static string DisplayAuditAction(string action)
     {
-        "Importou catalogo" => "Importou catálogo",
-        "Aprovou revisao" => "Aprovou revisão",
-        "Rejeitou revisao" => "Rejeitou revisão",
-        _ => action
-    };
-}
+        return action switch
+        {
+            "Importou catalogo" => "Importou catálogo",
+            "Cadastrou item no catalogo" => "Cadastrou item no catálogo",
+            "Aprovou revisao" => "Aprovou revisão",
+            "Rejeitou revisao" => "Rejeitou revisão",
+            _ => action
+        };
+    }
 
 static string DisplayAuditEntityType(string entityType)
 {
@@ -2002,6 +2192,11 @@ static string CatalogQuerySuffix(string query, string category)
     }
 
     return parameters.Count == 0 ? "" : "?" + string.Join("&", parameters);
+}
+
+static string BuildCatalogPath(string? query, string? category)
+{
+    return "/catalog" + CatalogQuerySuffix(query ?? "", category ?? "");
 }
 
 static string CatalogCategoryClass(string category, string currentCategory)

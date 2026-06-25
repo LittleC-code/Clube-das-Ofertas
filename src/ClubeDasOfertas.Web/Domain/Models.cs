@@ -125,6 +125,8 @@ public sealed record ExportBatch(
     Guid ExportedBy,
     DateTimeOffset ExportedAt,
     string FileName,
+    string ContentType,
+    string StorageKind,
     string Content,
     int RowCount);
 

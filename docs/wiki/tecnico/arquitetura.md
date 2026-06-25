@@ -2,12 +2,44 @@
 titulo: arquitetura
 categoria: tecnico
 criado: 2026-06-09
-atualizado: 2026-06-12
+atualizado: 2026-06-25
 fontes: []
 links: [../dominio/exportacao.md, ../dominio/campanha.md, ../dominio/item.md, ../historico/bugs-resolvidos.md]
 ---
 
 # Arquitetura
+
+## 2026-06-25 - Exportacao CSV com selecao de colunas
+
+- O `POST /campaigns/{id}/export` passou a ler a selecao de checkboxes enviada pela tela de detalhe da campanha e a devolver erro amigavel quando nenhuma coluna valida foi marcada.
+- `ExportService` agora centraliza o catalogo de colunas exportaveis (`key`, `header`, `label`) e monta o CSV filtrando esse conjunto, sem alterar a ordem canonica do arquivo.
+- A interface de campanha ganhou um painel expansivel `Personalizar colunas do CSV`, mantendo todas as colunas marcadas por padrao para nao quebrar o fluxo atual e permitindo enxugar o arquivo conforme o destino operacional.
+- O mesmo painel passou a expor presets declarados no proprio `ExportService`; hoje a tela aplica `Lojas` ou `Interno/CRM` via JavaScript apenas ligando/desligando checkboxes, sem criar uma segunda rota nem um formato paralelo de exportacao.
+- A microcopia da tela foi refinada para orientar o operador pelo destino final do arquivo (`Exportar para lojas` ou `Exportar para uso interno e CRM`), em vez de depender apenas de nomes tecnicos de preset.
+- A forma de submissao agora ficou hibrida: botoes rapidos enviam `XLSX` pelo preset escolhido, enquanto o botao de `Exportar CSV personalizado` continua usando as checkboxes ajustadas manualmente.
+- O historico de exportacoes passou a guardar `content_type` e `storage_kind` para suportar tanto `CSV` textual quanto `XLSX` binario serializado em base64, mantendo a mesma tabela `export_batches`.
+- A geracao dos `XLSX` de lojas e interno e manual, via `ZipArchive` e XML OpenXML escrito pelo proprio `ExportService`; isso evita introduzir dependencia nova de producao so para montar a planilha estilizada.
+- O `XLSX` interno usa uma rota dedicada no `ExportService` e enriquece a planilha com contagem de correspondencias no catalogo por `normalized_description_tabloid`, via consulta agregada ao `AppRepository`, para preencher a coluna equivalente a `K` da planilha operacional.
+- Como o pacote `XLSX` e montado sem biblioteca externa, a ordem dos nos do `worksheet` precisa seguir a sequencia esperada pelo Excel; `autoFilter` deve ser emitido antes de `mergeCells`, e textos de celula passam por saneamento de caracteres invalidos para nao gerar reparo ao abrir o arquivo.
+
+## 2026-06-25 - Catalogo passou a aceitar cadastro manual inline
+
+- A tela `/catalog` em `Program.cs` continua concentrando a operacao administrativa do catalogo, mas agora ganhou tambem um bloco recolhivel `Cadastrar item manualmente` na propria sidebar, ao lado da importacao da base.
+- O `POST /catalog/create` reaproveita a mesma persistencia de `UpsertCatalogAsync`, preservando a semantica atual de importacao para a combinacao `normalized_description_tabloid + barcode`, em vez de criar uma segunda regra de gravacao so para o fluxo manual.
+- O formulario preserva os filtros atuais (`q` e `category`) no redirect de volta para `/catalog`, o que evita perder contexto depois de salvar um item novo ou atualizar um ja existente.
+- O campo de categoria do cadastro manual deixou de usar `datalist` nativa e passou a usar um painel visual proprio com as categorias existentes, reaproveitando a mesma dinamica de cores do catalogo lateral para manter consistencia visual e facilitar a escolha.
+
+## 2026-06-25 - Menu de navegacao do tema de campanhas virou painel de hover no cabecalho
+
+- O menu do tema `page-campaign` em `HtmlView.cs` deixou de usar `<details>` com clique e passou a usar um botao compacto no proprio cabecalho, mantendo o titulo da pagina centralizado entre o menu e a area do usuario.
+- Ao passar o cursor no gatilho do menu, o sistema abre um painel suspenso logo abaixo do botao com os links de `Campanhas`, `Catalogo de produtos`, `Regras`, `Historico` e `Sair`; fora do hover, o cabecalho mostra apenas o icone do menu.
+- A logica de abertura continua embutida no script existente da pagina, usando `data-open` e `aria-expanded` como fallback para clique, sem criar arquivos extras nem alterar as rotas ou o conteudo das secoes.
+
+## 2026-06-25 - Layout base passou a calcular a folga do rodape pela marca fixa
+
+- O CSS global em `HtmlView.cs` deixou de reservar `96px` fixos no `main` e passou a derivar a folga inferior do tamanho real da marca fixa do rodape, usando variaveis `--footer-brand-width`, `--footer-brand-height` e `--footer-brand-clearance`.
+- `html` e `body` agora garantem altura minima de viewport (`100%`, `100vh` e `100dvh`), o que reduz variacoes visuais entre resolucoes e evita que o canvas do navegador apareca diferente do fundo do site no fim da pagina.
+- A mudanca preserva o rodape decorativo no canto inferior direito, mas deixa a sobra inferior mais proporcional ao tamanho renderizado da imagem em cada tela.
 
 ## 2026-06-12 - Bootstrap do banco ficou mais explicito no startup
 

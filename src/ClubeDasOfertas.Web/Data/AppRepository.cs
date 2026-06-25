@@ -243,6 +243,34 @@ ORDER BY description_solidus;
         return entries;
     }
 
+    public async Task<IReadOnlyDictionary<string, int>> CountCatalogMatchesByNormalizedDescriptionsAsync(
+        IReadOnlyCollection<string> normalizedDescriptions,
+        CancellationToken cancellationToken = default)
+    {
+        if (normalizedDescriptions.Count == 0)
+        {
+            return new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        await using var connection = await db.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+SELECT normalized_description_tabloid, COUNT(*)
+FROM product_catalog_entries
+WHERE normalized_description_tabloid = ANY(@descriptions)
+GROUP BY normalized_description_tabloid;
+""", connection);
+        command.Parameters.AddWithValue("@descriptions", normalizedDescriptions.ToArray());
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            counts[reader.GetString(0)] = reader.GetInt32(1);
+        }
+
+        return counts;
+    }
+
     public async Task<ProductCatalogEntry?> GetCatalogEntryByBarcodeAsync(string barcode, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(barcode))
@@ -711,8 +739,8 @@ LIMIT 250;
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         await using (var command = new NpgsqlCommand("""
-INSERT INTO export_batches (id, campaign_id, exported_by, exported_at, file_name, content, row_count)
-VALUES (@id, @campaign_id, @exported_by, @exported_at, @file_name, @content, @row_count);
+INSERT INTO export_batches (id, campaign_id, exported_by, exported_at, file_name, content_type, storage_kind, content, row_count)
+VALUES (@id, @campaign_id, @exported_by, @exported_at, @file_name, @content_type, @storage_kind, @content, @row_count);
 """, connection, transaction))
         {
             command.Parameters.AddWithValue("@id", export.Id);
@@ -720,6 +748,8 @@ VALUES (@id, @campaign_id, @exported_by, @exported_at, @file_name, @content, @ro
             command.Parameters.AddWithValue("@exported_by", export.ExportedBy);
             command.Parameters.AddWithValue("@exported_at", export.ExportedAt);
             command.Parameters.AddWithValue("@file_name", export.FileName);
+            command.Parameters.AddWithValue("@content_type", export.ContentType);
+            command.Parameters.AddWithValue("@storage_kind", export.StorageKind);
             command.Parameters.AddWithValue("@content", export.Content);
             command.Parameters.AddWithValue("@row_count", export.RowCount);
             await command.ExecuteNonQueryAsync(cancellationToken);
@@ -744,7 +774,7 @@ WHERE id = @campaign_id;
     {
         await using var connection = await db.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
-SELECT id, campaign_id, exported_by, exported_at, file_name, content, row_count
+SELECT id, campaign_id, exported_by, exported_at, file_name, content_type, storage_kind, content, row_count
 FROM export_batches
 WHERE id = @id;
 """, connection);
@@ -752,7 +782,7 @@ WHERE id = @id;
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken)
-            ? new ExportBatch(reader.GetGuid(0), reader.GetGuid(1), reader.GetGuid(2), reader.GetFieldValue<DateTimeOffset>(3), reader.GetString(4), reader.GetString(5), reader.GetInt32(6))
+            ? new ExportBatch(reader.GetGuid(0), reader.GetGuid(1), reader.GetGuid(2), reader.GetFieldValue<DateTimeOffset>(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetInt32(8))
             : null;
     }
 
@@ -761,7 +791,7 @@ WHERE id = @id;
         var exports = new List<ExportBatch>();
         await using var connection = await db.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
-SELECT id, campaign_id, exported_by, exported_at, file_name, content, row_count
+SELECT id, campaign_id, exported_by, exported_at, file_name, content_type, storage_kind, content, row_count
 FROM export_batches
 ORDER BY exported_at DESC
 LIMIT 100;
@@ -770,7 +800,7 @@ LIMIT 100;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            exports.Add(new ExportBatch(reader.GetGuid(0), reader.GetGuid(1), reader.GetGuid(2), reader.GetFieldValue<DateTimeOffset>(3), reader.GetString(4), reader.GetString(5), reader.GetInt32(6)));
+            exports.Add(new ExportBatch(reader.GetGuid(0), reader.GetGuid(1), reader.GetGuid(2), reader.GetFieldValue<DateTimeOffset>(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetInt32(8)));
         }
 
         return exports;

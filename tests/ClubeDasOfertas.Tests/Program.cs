@@ -232,6 +232,63 @@ var manualExportCsv = ExportService.BuildCsv(exportCampaign, [manualItem]);
 Assert(manualExportCsv.Contains(";Manual;", StringComparison.Ordinal), "CSV deve preservar a fonte Manual dos itens incluidos manualmente.");
 Assert(manualExportCsv.Contains("05/06/2026 a 08/06/2026", StringComparison.Ordinal), "CSV deve preservar a vigencia original dos itens incluidos manualmente.");
 
+var subsetExportCsv = ExportService.BuildCsv(exportCampaign, [manualItem], ["codigo_barras", "fonte", "descricao_solidus"]);
+Assert(subsetExportCsv.StartsWith("codigo_barras;fonte;descricao_solidus", StringComparison.Ordinal), "CSV personalizado deve manter apenas as colunas selecionadas, na ordem padrao da exportacao.");
+Assert(!subsetExportCsv.Contains("status_item", StringComparison.Ordinal), "CSV personalizado nao deve incluir colunas que nao foram selecionadas.");
+
+var lojasPresetColumns = ExportService.GetPresetColumns("lojas");
+var lojasExportCsv = ExportService.BuildCsv(exportCampaign, [manualItem], lojasPresetColumns);
+Assert(lojasExportCsv.Contains("fonte;", StringComparison.Ordinal)
+    && lojasExportCsv.Contains("vigencia_original;", StringComparison.Ordinal)
+    && lojasExportCsv.Contains("descricao_tabloide;", StringComparison.Ordinal)
+    && lojasExportCsv.Contains("descricao_solidus;", StringComparison.Ordinal)
+    && lojasExportCsv.Contains("codigo_barras", StringComparison.Ordinal), "Preset de lojas deve selecionar o bloco operacional equivalente ao envio para lojas.");
+Assert(!lojasExportCsv.Contains("status_item", StringComparison.Ordinal) && !lojasExportCsv.Contains("tipo_codigo", StringComparison.Ordinal), "Preset de lojas nao deve incluir colunas internas do CRM.");
+
+var itemWithInvalidCharacters = weightedItem with
+{
+    DescriptionTabloid = "Oferta\u0001 com controle",
+    DescriptionSolidus = "SOLIDUS\u0002 TESTE"
+};
+
+var lojasWorkbook = ExportService.BuildStoreWorkbook(exportCampaign, [itemWithInvalidCharacters, weightedItem with { Barcode = "7890000000999" }]);
+using (var workbookStream = new MemoryStream(lojasWorkbook))
+using (var archive = new ZipArchive(workbookStream, ZipArchiveMode.Read, leaveOpen: false))
+{
+    var workbookXml = ReadEntry(archive, "xl/workbook.xml");
+    var sheetXml = ReadEntry(archive, "xl/worksheets/sheet1.xml");
+    Assert(workbookXml.Contains("Tabloide - 05.06.2026", StringComparison.Ordinal), "XLSX de lojas deve criar a aba com referencia de tabloide e data.");
+    Assert(sheetXml.Contains("Clube Das Ofertas - Campanha teste", StringComparison.Ordinal), "XLSX de lojas deve trazer o titulo visual da campanha.");
+    Assert(sheetXml.Contains("Descricao no Tabloide", StringComparison.Ordinal) && sheetXml.Contains("Cod Barras", StringComparison.Ordinal), "XLSX de lojas deve conter o bloco operacional de A ate H.");
+    Assert(sheetXml.Contains("<mergeCell ref=\"A3:A4\"/>", StringComparison.Ordinal), "XLSX de lojas deve mesclar fonte repetida para lembrar a planilha base.");
+    Assert(sheetXml.IndexOf("<autoFilter", StringComparison.Ordinal) < sheetXml.IndexOf("<mergeCells", StringComparison.Ordinal), "XLSX de lojas deve manter autoFilter antes de mergeCells para evitar reparo no Excel.");
+    Assert(!sheetXml.Contains("\u0001", StringComparison.Ordinal) && !sheetXml.Contains("\u0002", StringComparison.Ordinal), "XLSX de lojas nao deve escrever caracteres invalidos de XML nas celulas.");
+}
+
+var internalWorkbook = ExportService.BuildInternalWorkbook(
+    exportCampaign,
+    [weightedItem, packageItem],
+    new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+    {
+        [weightedItem.NormalizedDescriptionTabloid] = 1,
+        [packageItem.NormalizedDescriptionTabloid] = 2
+    });
+using (var workbookStream = new MemoryStream(internalWorkbook))
+using (var archive = new ZipArchive(workbookStream, ZipArchiveMode.Read, leaveOpen: false))
+{
+    var workbookXml = ReadEntry(archive, "xl/workbook.xml");
+    var sheetXml = ReadEntry(archive, "xl/worksheets/sheet1.xml");
+    Assert(workbookXml.Contains("Interno - 05.06.2026", StringComparison.Ordinal), "XLSX interno deve criar aba propria para o uso interno e CRM.");
+    Assert(sheetXml.Contains("Codigo Unificado ou EAN", StringComparison.Ordinal), "XLSX interno deve espelhar os parametros auxiliares da planilha original em J1.");
+    Assert(sheetXml.Contains("Ao enviar as lojas, enviar da coluna A ate H.", StringComparison.Ordinal), "XLSX interno deve manter o recado operacional da planilha base.");
+    Assert(sheetXml.Contains("2. Item esta nas ofertas do tabloide?", StringComparison.Ordinal), "XLSX interno deve manter a cabecalho de controle da coluna N.");
+    Assert(sheetXml.Contains("7896864400031;24,90;19,90;5", StringComparison.Ordinal), "XLSX interno deve preencher o concatenado usado no cadastro do CRM.");
+    Assert(sheetXml.Contains("Bloqueado", StringComparison.Ordinal), "XLSX interno deve preencher a coluna de status com o estado atual do item.");
+    Assert(sheetXml.Contains(">1</t>", StringComparison.Ordinal) && sheetXml.Contains(">2</t>", StringComparison.Ordinal), "XLSX interno deve levar a contagem de correspondencias do catalogo para a coluna K.");
+}
+
+AssertThrows<InvalidOperationException>(() => ExportService.BuildCsv(exportCampaign, [manualItem], []), "Exportacao sem nenhuma coluna deve ser rejeitada.");
+
 await using (var stream = new MemoryStream([0x50, 0x4B, 0x03, 0x04]))
 {
     var file = new FormFile(stream, 0, SpreadsheetImporter.MaxUploadBytes + 1, "file", "grande.xlsx");
@@ -258,6 +315,21 @@ static void Assert(bool condition, string message)
     {
         throw new InvalidOperationException(message);
     }
+}
+
+static void AssertThrows<TException>(Action action, string message)
+    where TException : Exception
+{
+    try
+    {
+        action();
+    }
+    catch (TException)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException(message);
 }
 
 static async Task AssertThrowsAsync<TException>(Func<Task> action, string message)
@@ -410,4 +482,11 @@ static void WriteEntry(ZipArchive archive, string path, string content)
     var entry = archive.CreateEntry(path);
     using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false));
     writer.Write(content);
+}
+
+static string ReadEntry(ZipArchive archive, string path)
+{
+    var entry = archive.GetEntry(path) ?? throw new InvalidOperationException($"Entrada '{path}' nao encontrada no arquivo.");
+    using var reader = new StreamReader(entry.Open(), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+    return reader.ReadToEnd();
 }
