@@ -1,13 +1,23 @@
----
+﻿---
 titulo: arquitetura
 categoria: tecnico
 criado: 2026-06-09
-atualizado: 2026-06-25
+atualizado: 2026-06-26
 fontes: []
 links: [../dominio/exportacao.md, ../dominio/campanha.md, ../dominio/item.md, ../historico/bugs-resolvidos.md]
 ---
 
 # Arquitetura
+
+## 2026-06-26 - Catalogo passou a permitir exclusao manual de itens
+
+- A tela `/catalog` em `Program.cs` agora exibe um botao de `Excluir` em cada card da listagem, com confirmacao inline antes da remocao.
+- O novo `POST /catalog/{id}/delete` preserva os filtros atuais (`q` e `category`) no redirect de volta para `/catalog`, para que o operador nao perca o contexto de busca apos remover um item.
+- A exclusao consulta primeiro a entrada por `id` no `AppRepository`, devolve aviso amigavel quando o item ja nao existe mais e registra auditoria como `Excluiu item do catalogo` com descricao e codigo de barras removidos.
+- Na mesma listagem, cada card tambem passou a oferecer um formulario inline de edicao com `Descricao tabloide`, `Categoria`, `Descricao Solidus` e `Codigo de barras`, reutilizando o mesmo comportamento de abrir/fechar usado nas edicoes inline de campanhas e regras.
+- O novo `POST /catalog/{id}/save` atualiza o registro sem trocar o `id`, recalcula `normalized_description_*` e `code_type`, preserva os filtros atuais no retorno e devolve mensagem amigavel quando a edicao colide com a chave unica do catalogo.
+- O bloco visual `catalog-item-actions` foi alinhado com o padrao dos botoes `Buscar` e `Limpar`: `Editar` e `Excluir` voltaram a aparecer lado a lado, com largura natural e quebra apenas quando faltar espaco.
+- Na tela de `Regras`, o bloco de acoes por linha passou a usar o mesmo agrupamento-base dos formularios (`form-actions`), aproximando visualmente `Editar`, `Alternar` e `Excluir` do padrao reconhecido em `Buscar` e `Limpar`.
 
 ## 2026-06-25 - Exportacao CSV com selecao de colunas
 
@@ -66,11 +76,11 @@ links: [../dominio/exportacao.md, ../dominio/campanha.md, ../dominio/item.md, ..
 - A normalizacao de exibicao agora trata `Sobremesa` como `Sobremesas` na legenda do grafico, no filtro lateral e nos cards dos itens, sem exigir migracao de dados persistidos.
 - O ajuste visual da lista `Campanhas criadas` permaneceu concentrado nos overrides de `HtmlView.cs`, com aumento discreto de fonte para cabecalhos, textos auxiliares, badges e botoes sem desfazer a compactacao recente da grade.
 - No refinamento seguinte, a mesma cor da categoria passou a aparecer tambem na navegacao lateral e nos cards dos itens do catalogo, com borda de destaque, ponto colorido e badge da categoria para que a mudanca fique perceptivel mesmo antes de chegar ao grafico.
-- A correção definitiva exigiu subir a canonizacao para `TextNormalizer`: filtro, lista lateral, cards e grafico agora compartilham a mesma chave normalizada de categoria, evitando que variantes como `Sobremesa` ou nomes com acento/formatacao diferente caiam todas na cor de fallback.
+- A correÃ§Ã£o definitiva exigiu subir a canonizacao para `TextNormalizer`: filtro, lista lateral, cards e grafico agora compartilham a mesma chave normalizada de categoria, evitando que variantes como `Sobremesa` ou nomes com acento/formatacao diferente caiam todas na cor de fallback.
 - No ajuste seguinte, a categoria combinada `Frios e Hortifruti` foi revertida: a canonizacao passou a preservar `Frios` como categoria propria e a consolidar os casos combinados em `Hortifruti`, com dois tons de verde diferentes no mapa de cores.
 - O filtro lateral voltou a expor uma entrada explicita de `Todos os itens`, separada das categorias coloridas, e os links/linhas do grafico passaram a carregar tooltip nativa com quantidade e percentual para facilitar a leitura quando a visao geral estiver selecionada.
-- Para o filtro geral continuar funcional apos esse ajuste, `Todos os itens` e `Todas as categorias` passaram a ser tratados como ausencia de filtro antes de chegar ao repositório e antes de reidratar o formulario; isso evita que a string da UI seja reaproveitada como se fosse uma categoria real.
-- O grafico de categorias deixou de usar `conic-gradient` e passou a ser desenhado em SVG com segmentos de stroke e pequenos gaps entre as fatias; isso melhorou a nitidez das divisoes e permitiu hover direto na fatia com tooltip flutuante de categoria, quantidade e percentual, reutilizando o mesmo balão tambem na legenda.
+- Para o filtro geral continuar funcional apos esse ajuste, `Todos os itens` e `Todas as categorias` passaram a ser tratados como ausencia de filtro antes de chegar ao repositÃ³rio e antes de reidratar o formulario; isso evita que a string da UI seja reaproveitada como se fosse uma categoria real.
+- O grafico de categorias deixou de usar `conic-gradient` e passou a ser desenhado em SVG com segmentos de stroke e pequenos gaps entre as fatias; isso melhorou a nitidez das divisoes e permitiu hover direto na fatia com tooltip flutuante de categoria, quantidade e percentual, reutilizando o mesmo balÃ£o tambem na legenda.
 - No ajuste seguinte, os gaps artificiais e o track claro foram removidos do SVG para evitar recortes brancos entre as fatias; o donut passou a fechar os segmentos sem vazamento do fundo, inclusive quando so existe uma categoria.
 
 ## 2026-06-11 - Overlay fixo da tooltip das regras com template
@@ -81,8 +91,8 @@ links: [../dominio/exportacao.md, ../dominio/campanha.md, ../dominio/item.md, ..
 
 ## 2026-06-11 - Tooltip da regra voltou para HTML e CSS
 
-- A informação de `Como acontece` na tabela de `Regras` voltou a ser renderizada junto da propria celula, com exibição controlada por `:hover` e `:focus` no CSS.
-- O balão deixou de depender de JavaScript para preencher texto ou calcular posição, o que elimina o risco de tooltip vazia e mantém o conteúdo sempre disponível no DOM.
+- A informaÃ§Ã£o de `Como acontece` na tabela de `Regras` voltou a ser renderizada junto da propria celula, com exibiÃ§Ã£o controlada por `:hover` e `:focus` no CSS.
+- O balÃ£o deixou de depender de JavaScript para preencher texto ou calcular posiÃ§Ã£o, o que elimina o risco de tooltip vazia e mantÃ©m o conteÃºdo sempre disponÃ­vel no DOM.
 
 ## 2026-06-11 - Tooltip da regra recebeu Base64 para evitar balao vazio
 
@@ -91,8 +101,8 @@ links: [../dominio/exportacao.md, ../dominio/campanha.md, ../dominio/item.md, ..
 
 ## 2026-06-11 - Tooltip da regra virou overlay flutuante
 
-- A previa expandida de `Como acontece` na tabela de `Regras` passou a ser um overlay fixo sobreposto ao `body`, posicionado por `getBoundingClientRect` da célula.
-- O overlay deixou de participar da altura da tabela, eliminando a barra de rolagem extra na ultima linha e mantendo a informacao como contexto visual externo à listagem.
+- A previa expandida de `Como acontece` na tabela de `Regras` passou a ser um overlay fixo sobreposto ao `body`, posicionado por `getBoundingClientRect` da cÃ©lula.
+- O overlay deixou de participar da altura da tabela, eliminando a barra de rolagem extra na ultima linha e mantendo a informacao como contexto visual externo Ã  listagem.
 - A celula ficou apenas como gatilho e preview resumido, sem carregar o balao dentro da grade.
 
 ## 2026-06-11 - Tooltip da regra centralizada sobre a propria linha
@@ -104,7 +114,7 @@ links: [../dominio/exportacao.md, ../dominio/campanha.md, ../dominio/item.md, ..
 
 - A tabela principal de `Regras` passou a exibir somente `Status`, `Nome`, `Como acontece`, `Multiplicador` e as acoes de `Editar`, `Alternar` e `Excluir`.
 - Campos operacionais menos consultados na leitura rapida, como `Tipo`, `Unidade alvo`, `Categorias alvo` e `Exigir revisao`, permaneceram acessiveis apenas dentro do formulario de edicao inline da propria regra.
-- O `colspan` da linha expansivel e as larguras da `rules-tablewrap` foram recalibrados para a nova grade, reduzindo ruído visual sem alterar a logica de criacao, edicao ou alternancia das regras.
+- O `colspan` da linha expansivel e as larguras da `rules-tablewrap` foram recalibrados para a nova grade, reduzindo ruÃ­do visual sem alterar a logica de criacao, edicao ou alternancia das regras.
 
 ## 2026-06-11 - Lista de campanhas compactada para manter colunas visiveis
 
@@ -167,19 +177,19 @@ links: [../dominio/exportacao.md, ../dominio/campanha.md, ../dominio/item.md, ..
 - O conversor server-side aceita alternativas com `ou`, `;`, `|` ou quebra de linha e usa `*` como coringa; quando o texto ja parece regex, ele eh preservado como literal para manter compatibilidade com regras avancadas existentes.
 - O detector de regex literal foi refinado para nao tratar `|` amigavel como regex por si so; isso evita que entradas como `Fardo | Caixa` escapem da conversao e deixem de acionar revisao quando deveriam casar com os itens.
 
-## 2026-06-09 - Logo institucional movida para o rodapé fixo
+## 2026-06-09 - Logo institucional movida para o rodapÃ© fixo
 
-- A marca `Clube Das Ofertas` deixou de ocupar o cabeçalho e passou a ser renderizada como elemento fixo no canto inferior direito de todas as páginas.
-- O `main` ganhou folga adicional no rodapé para reduzir a chance de sobreposição com conteúdo próximo ao fim da tela.
+- A marca `Clube Das Ofertas` deixou de ocupar o cabeÃ§alho e passou a ser renderizada como elemento fixo no canto inferior direito de todas as pÃ¡ginas.
+- O `main` ganhou folga adicional no rodapÃ© para reduzir a chance de sobreposiÃ§Ã£o com conteÃºdo prÃ³ximo ao fim da tela.
 
-## 2026-06-09 - Busca do catálogo com espaçamento próprio no painel
+## 2026-06-09 - Busca do catÃ¡logo com espaÃ§amento prÃ³prio no painel
 
-- O formulário de busca do painel de resultados do catálogo passou a usar espaçamento inferior próprio, separando melhor os botões `Buscar` e `Limpar` do início visual da lista de itens.
-- O ajuste foi isolado em uma classe específica do catálogo para não alterar o espaçamento padrão dos demais formulários da aplicação.
+- O formulÃ¡rio de busca do painel de resultados do catÃ¡logo passou a usar espaÃ§amento inferior prÃ³prio, separando melhor os botÃµes `Buscar` e `Limpar` do inÃ­cio visual da lista de itens.
+- O ajuste foi isolado em uma classe especÃ­fica do catÃ¡logo para nÃ£o alterar o espaÃ§amento padrÃ£o dos demais formulÃ¡rios da aplicaÃ§Ã£o.
 
 ## 2026-06-09 - Busca do catalogo movida para o painel de resultados
 
-- A busca do catÃ¡logo saiu da coluna lateral e passou a ficar logo abaixo do titulo `Itens do catÃ¡logo`, no topo do painel de resultados.
+- A busca do catÃƒÂ¡logo saiu da coluna lateral e passou a ficar logo abaixo do titulo `Itens do catÃƒÂ¡logo`, no topo do painel de resultados.
 - O formulario continua usando `GET /catalog` e preserva o filtro de categoria atual via campo oculto, evitando regressao no cruzamento entre busca textual e navegacao por categoria.
 
 ## 2026-06-09 - Exportacao sem bloqueio duro
@@ -192,7 +202,7 @@ links: [../dominio/exportacao.md, ../dominio/campanha.md, ../dominio/item.md, ..
 
 ## 2026-06-09 - Paleta do site alinhada ao EPS da marca
 
-- O tema visual do site passou a usar as cores principais identificadas em `Clube DAS Ofertas versão preferencial.eps`.
+- O tema visual do site passou a usar as cores principais identificadas em `Clube DAS Ofertas versÃ£o preferencial.eps`.
 - As duas cores-base extraidas do arquivo foram:
   - amarelo `0 0 1 0` em CMYK;
   - vermelho escuro `.2157 1 1 .2275` em CMYK, convertido para um tom aproximado de `#9b0000`.
@@ -200,15 +210,15 @@ links: [../dominio/exportacao.md, ../dominio/campanha.md, ../dominio/item.md, ..
 
 ## 2026-06-09 - Logo do cabecalho trocada para a versao secundaria
 
-- O cabeçalho passou a usar a arte derivada de `Clube DAS Ofertas versão secundária.eps`.
+- O cabeÃ§alho passou a usar a arte derivada de `Clube DAS Ofertas versÃ£o secundÃ¡ria.eps`.
 - A imagem foi exportada para `wwwroot/clube-das-ofertas-secundaria.png` e a referencia do `header-brandmark` foi atualizada para esse asset.
 
 ## 2026-06-09 - Layout de campanha e catalogo refinado
 
 - A tabela de detalhes da campanha passou a manter os campos textuais em uma linha unica, deixando a leitura horizontal apoiada pelo `tablewrap`.
-- A listagem do catálogo deixou de usar scroll interno na coluna da direita, para terminar junto da navegação lateral e reduzir áreas vazias.
-- Os titulos duplicados do corpo das páginas administrativas foram removidos, mantendo a identificação principal somente no cabeçalho.
-- A página antes rotulada como `Catálogo` passou a usar `Catálogo de produtos` no cabeçalho e no título do documento.
+- A listagem do catÃ¡logo deixou de usar scroll interno na coluna da direita, para terminar junto da navegaÃ§Ã£o lateral e reduzir Ã¡reas vazias.
+- Os titulos duplicados do corpo das pÃ¡ginas administrativas foram removidos, mantendo a identificaÃ§Ã£o principal somente no cabeÃ§alho.
+- A pÃ¡gina antes rotulada como `CatÃ¡logo` passou a usar `CatÃ¡logo de produtos` no cabeÃ§alho e no tÃ­tulo do documento.
 
 ## 2026-06-09 - Detalhe da campanha sem importacao duplicada
 
@@ -222,11 +232,32 @@ links: [../dominio/exportacao.md, ../dominio/campanha.md, ../dominio/item.md, ..
 
 - A interface passou a centralizar parte da normalizacao textual no proprio renderizador, corrigindo labels, filtros, badges, papeis de usuario e historico de auditoria sem depender da limpeza imediata dos dados ja persistidos.
 - Mensagens de apoio vindas da importacao, do preview de contas e dos avisos operacionais foram revistas para usar acentuacao e termos consistentes em portugues brasileiro.
-- A revisao tambem padronizou pluralizacao simples (`campanha`/`campanhas`, `item`/`itens`, `pendencia`/`pendencias`) e nomes mais claros para elementos como `Catálogo`, `Histórico`, `Aplicativo` e `Administrador`.
+- A revisao tambem padronizou pluralizacao simples (`campanha`/`campanhas`, `item`/`itens`, `pendencia`/`pendencias`) e nomes mais claros para elementos como `CatÃ¡logo`, `HistÃ³rico`, `Aplicativo` e `Administrador`.
 
 ## 2026-06-09 - Lista do catalogo com rolagem propria e altura ampliada
 
-- A lista de itens do catálogo voltou a ter rolagem própria, em vez de compartilhar a barra da página inteira.
-- O painel de resultados recebeu altura mínima própria e a área rolável foi ampliada para acompanhar melhor o painel lateral sem voltar ao grande espaço em branco anterior.
-- A marcação do catálogo precisa manter a classe `catalog-results-panel` no painel da direita; sem isso, a altura própria do painel não entra em efeito e a lista volta a disputar a rolagem com a página.
-- O painel de resultados usa uma altura limitada pela viewport e `overflow: hidden`, enquanto `catalog-list-shell` usa `overflow-y: scroll`, `scrollbar-gutter: stable` e `overscroll-behavior: contain`; isso mantém a barra da lista independente da barra da página.
+- A lista de itens do catÃ¡logo voltou a ter rolagem prÃ³pria, em vez de compartilhar a barra da pÃ¡gina inteira.
+- O painel de resultados recebeu altura mÃ­nima prÃ³pria e a Ã¡rea rolÃ¡vel foi ampliada para acompanhar melhor o painel lateral sem voltar ao grande espaÃ§o em branco anterior.
+- A marcaÃ§Ã£o do catÃ¡logo precisa manter a classe `catalog-results-panel` no painel da direita; sem isso, a altura prÃ³pria do painel nÃ£o entra em efeito e a lista volta a disputar a rolagem com a pÃ¡gina.
+- O painel de resultados usa uma altura limitada pela viewport e `overflow: hidden`, enquanto `catalog-list-shell` usa `overflow-y: scroll`, `scrollbar-gutter: stable` e `overscroll-behavior: contain`; isso mantÃ©m a barra da lista independente da barra da pÃ¡gina.
+
+## 2026-06-26 - Autocadastro e perfis com acesso limitado
+
+- A tela de `Login` passou a acumular dois fluxos anonimos: autenticacao tradicional e autocadastro de novos usuarios, que sempre entram com o papel `Usuario`.
+- A matriz de permissao ficou centralizada em `PermissionMatrix`: `Administrador` segue com acesso total, `Operador` pode criar/importar/revisar/exportar campanhas, e `Usuario` fica restrito a consulta das campanhas.
+- As rotas de `Catalogo de produtos`, `Regras` e `Historico` continuam administrativas e agora tambem somem da navegacao para perfis nao administradores.
+- A tela de campanhas passou a renderizar modos diferentes conforme o papel: `Administrador` e `Operador` veem a criacao de campanha e as acoes operacionais; `Usuario` visualiza a lista e o detalhe sem botoes de editar, revisar, incluir manualmente, exportar ou excluir.
+
+## 2026-06-26 - Lista do catalogo ganhou mais area util horizontal
+
+- A grade principal do catalogo passou a reservar menos largura minima para a barra lateral, devolvendo espaco para o painel da listagem sem alterar o empilhamento responsivo mobile.
+- Cada card de item tambem foi recalibrado: a coluna de descricao ganhou mais peso, a coluna de metadados teve largura minima reduzida e o grid interno de `Categoria`, `Codigo` e `Tipo` passou a aceitar colunas mais compactas.
+- O ajuste foi pensado para evitar que a ultima coluna do resumo do item fique parcialmente escondida, reduzindo a necessidade de depender da barra horizontal para leitura completa.
+- No refinamento seguinte, o card deixou de dividir descricao e metadados em duas colunas concorrentes e passou a usar um bloco unico em largura cheia; assim `Categoria`, `Codigo` e `Tipo` aparecem abaixo da descricao, aproveitando toda a largura do painel principal em telas desktop.
+- Esse ajuste foi revertido na mesma data a pedido do usuario; o catalogo voltou ao layout anterior com lateral mais larga e cards em duas colunas.
+
+## 2026-06-26 - Tabela da campanha deixou de depender de scroll horizontal
+
+- A grade de itens em `/campaigns/{id}` passou a usar `table-layout: fixed` apenas nesse contexto, com larguras mais controladas para `Status`, `Fonte`, `Riscos` e `Linha`.
+- O `nowrap` global da tabela operacional foi removido; descricao, codigo de barras e pendencias agora podem quebrar linha de forma controlada sem empurrar a ultima coluna para fora da viewport.
+- As colunas de `Codigo`, `Preco` e `Pendencias` passaram a usar classes proprias no HTML, permitindo soltar quebra so onde necessario sem desmontar a leitura do restante da grade.

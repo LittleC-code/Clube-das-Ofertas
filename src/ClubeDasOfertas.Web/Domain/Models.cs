@@ -4,6 +4,30 @@ public static class Roles
 {
     public const string Admin = "Admin";
     public const string Operator = "Operador";
+    public const string User = "Usuario";
+}
+
+public static class PermissionMatrix
+{
+    public static bool IsAdmin(string? role)
+    {
+        return string.Equals(role, Roles.Admin, StringComparison.Ordinal);
+    }
+
+    public static bool CanOperateCampaigns(string? role)
+    {
+        return IsAdmin(role) || string.Equals(role, Roles.Operator, StringComparison.Ordinal);
+    }
+
+    public static bool CanDeleteCampaigns(string? role)
+    {
+        return IsAdmin(role);
+    }
+
+    public static bool CanManageAdminAreas(string? role)
+    {
+        return IsAdmin(role);
+    }
 }
 
 public static class CampaignStatus

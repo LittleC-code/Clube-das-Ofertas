@@ -20,7 +20,7 @@ Catalogo de todas as paginas da wiki. Atualizado pelo agente a cada operacao de 
 
 | Pagina | Resumo | Atualizado |
 |---|---|---|
-| [arquitetura.md](tecnico/arquitetura.md) | Visao geral da arquitetura, layout administrativo e responsabilidades | 2026-06-12 |
+| [arquitetura.md](tecnico/arquitetura.md) | Visao geral da arquitetura, layout administrativo e responsabilidades | 2026-06-26 |
 | [apprepository.md](tecnico/apprepository.md) | Padroes de acesso a dados, queries recorrentes, convencoes SQL | - |
 | [autenticacao.md](tecnico/autenticacao.md) | Fluxo de autenticacao por cookie, configuracao e decisoes | - |
 | [importacao-xlsm.md](tecnico/importacao-xlsm.md) | Como a leitura de planilhas .xlsm funciona, bibliotecas e edge cases | - |

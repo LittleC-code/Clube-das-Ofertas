@@ -586,3 +586,57 @@ Paginas de dominio atualizadas: nenhuma
 Paginas de historico atualizadas: historico/bugs-resolvidos.md
 Aprendizados registrados: componentes visuais baseados em `button` precisam neutralizar herancas como `white-space: nowrap` quando passam a carregar textos descritivos; sem isso, larguras intermediarias quebram a leitura mesmo quando o grid responsivo esta correto.
 
+## [2026-06-26] pós-tarefa | Permitir exclusao manual de itens do catalogo
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: quando o catalogo ja aceita cadastro manual inline, a exclusao mais segura e a que reaproveita o `id` persistido de cada item, confirma a acao no proprio card e devolve o operador para a mesma combinacao de busca e categoria usada antes da remocao.
+
+## [2026-06-26] pós-tarefa | Permitir edicao manual de itens do catalogo
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: no catalogo, editar inline no proprio card funciona melhor do que abrir uma tela separada para ajustes pontuais; manter o mesmo `id` do registro e tratar colisao da chave unica como aviso amigavel reduz risco operacional sem duplicar item.
+
+## [2026-06-26] pós-tarefa | Alinhar botoes de acao dos itens do catalogo ao padrao da busca
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: no catalogo, quando o usuario ja reconhece o padrao horizontal de `Buscar` e `Limpar`, manter `Editar` e `Excluir` com a mesma leitura visual reduz estranhamento e evita que os botoes parecam ocupar mais destaque do que deveriam.
+
+## [2026-06-26] pós-tarefa | Alinhar botoes da pagina de regras ao padrao da busca
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: quando a aplicacao repete um padrao claro de agrupamento horizontal para acoes curtas, reaproveitar o mesmo contêiner visual nas regras reduz ruído e deixa a leitura mais consistente entre telas administrativas.
+
+## [2026-06-26] pós-tarefa | Liberar autocadastro e acesso limitado por perfil
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: para separar perfis sem duplicar telas, vale centralizar a regra em uma matriz de permissao unica e deixar a propria UI esconder acoes administrativas e operacionais quando o usuario so pode consultar campanhas.
+
+## [2026-06-26] pós-tarefa | Ampliar area util da lista do catalogo
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: quando a ultima coluna do resumo do catalogo fica espremida, costuma render melhor devolver alguns pixels da lateral para a area principal e recalibrar o peso interno do card antes de recorrer a scroll horizontal.
+
+## [2026-06-26] pós-tarefa | Reorganizar card do catalogo para eliminar aperto lateral
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: em desktop largo, quando o resumo do catalogo continua apertado mesmo apos reduzir a lateral, costuma funcionar melhor abandonar a divisao em duas colunas concorrentes e deixar descricao e metadados ocuparem a largura total do card em blocos empilhados.
+
+## [2026-06-26] pós-tarefa | Remover scroll horizontal da tabela de campanhas
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: quando a grade operacional de campanha mistura muitas colunas textuais e financeiras, um `nowrap` global costuma ser o principal responsavel pela barra horizontal; limitar larguras-chave e liberar quebra controlada por coluna resolve melhor do que apenas aumentar o contêiner.
+
+## [2026-06-26] pós-tarefa | Reverter ajuste visual recente do catalogo
+Paginas tecnicas atualizadas: tecnico/arquitetura.md
+Paginas de dominio atualizadas: nenhuma
+Paginas de historico atualizadas: nenhuma
+Aprendizados registrados: neste caso, a tentativa de devolver mais area horizontal ao catalogo nao atacava o problema real da campanha e ainda piorava a preferencia visual do usuario; a melhor decisao foi restaurar o layout anterior do catalogo e seguir a correcao na tela certa.
+

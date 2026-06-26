@@ -43,6 +43,12 @@ Assert(quantityOnlyBales.IsValid && quantityOnlyBales.Quantity == 1m && quantity
 Assert(TextNormalizer.NormalizeKey("Descri\u00E7\u00E3o Solidus") == "DESCRICAO SOLIDUS", "Normalizacao deve remover acentos.");
 Assert(Parsing.CodeType("99738") == "Codigo Unificado", "Codigo curto deve ser classificado como Codigo Unificado.");
 Assert(Parsing.CodeType("7896864400031") == "EAN", "Codigo longo deve ser classificado como EAN.");
+Assert(PermissionMatrix.IsAdmin(Roles.Admin), "Administrador deve ser reconhecido como admin.");
+Assert(PermissionMatrix.CanOperateCampaigns(Roles.Admin), "Administrador deve poder operar campanhas.");
+Assert(PermissionMatrix.CanOperateCampaigns(Roles.Operator), "Operador deve poder operar campanhas.");
+Assert(!PermissionMatrix.CanOperateCampaigns(Roles.User), "Usuário limitado não deve poder operar campanhas.");
+Assert(PermissionMatrix.CanManageAdminAreas(Roles.Admin), "Administrador deve poder acessar áreas administrativas.");
+Assert(!PermissionMatrix.CanManageAdminAreas(Roles.Operator) && !PermissionMatrix.CanManageAdminAreas(Roles.User), "Perfis não administradores não devem acessar áreas administrativas.");
 
 var importer = new SpreadsheetImporter();
 var weightedRule = NewRule("Pesaveis", RuleTypes.Weighted, @"\b(ALHO|MUSSARELA|100\s*G)\b", 10m, "Kg", true);

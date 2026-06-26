@@ -70,7 +70,8 @@ LIMIT 1;
         await using var command = new NpgsqlCommand("""
 INSERT INTO users (id, email, display_name, password_hash, role, is_active, created_at)
 VALUES (@id, @email, @display_name, @password_hash, @role, true, @created_at)
-ON CONFLICT (email) DO NOTHING;
+ON CONFLICT (email) DO NOTHING
+RETURNING id, email, display_name, password_hash, role, is_active, created_at;
 """, connection);
         command.Parameters.AddWithValue("@id", user.Id);
         command.Parameters.AddWithValue("@email", user.Email);
@@ -78,9 +79,13 @@ ON CONFLICT (email) DO NOTHING;
         command.Parameters.AddWithValue("@password_hash", user.PasswordHash);
         command.Parameters.AddWithValue("@role", user.Role);
         command.Parameters.AddWithValue("@created_at", user.CreatedAt);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            return ReadUser(reader);
+        }
 
-        return user;
+        throw new InvalidOperationException("Já existe um usuário com esse email.");
     }
 
     public async Task<IReadOnlyList<Campaign>> ListCampaignsAsync(CancellationToken cancellationToken = default)
@@ -339,6 +344,60 @@ DO UPDATE SET
 
         await transaction.CommitAsync(cancellationToken);
         return count;
+    }
+
+    public async Task<ProductCatalogEntry?> GetCatalogEntryAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await db.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+SELECT id, description_tabloid, normalized_description_tabloid, category, description_solidus,
+       normalized_description_solidus, barcode, code_type, created_at, updated_at
+FROM product_catalog_entries
+WHERE id = @id
+LIMIT 1;
+""", connection);
+        command.Parameters.AddWithValue("@id", id);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadCatalog(reader) : null;
+    }
+
+    public async Task DeleteCatalogEntryAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await db.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+DELETE FROM product_catalog_entries
+WHERE id = @id;
+""", connection);
+        command.Parameters.AddWithValue("@id", id);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task UpdateCatalogEntryAsync(ProductCatalogEntry entry, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await db.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+UPDATE product_catalog_entries
+SET description_tabloid = @description_tabloid,
+    normalized_description_tabloid = @normalized_description_tabloid,
+    category = @category,
+    description_solidus = @description_solidus,
+    normalized_description_solidus = @normalized_description_solidus,
+    barcode = @barcode,
+    code_type = @code_type,
+    updated_at = @updated_at
+WHERE id = @id;
+""", connection);
+        command.Parameters.AddWithValue("@id", entry.Id);
+        command.Parameters.AddWithValue("@description_tabloid", entry.DescriptionTabloid);
+        command.Parameters.AddWithValue("@normalized_description_tabloid", entry.NormalizedDescriptionTabloid);
+        command.Parameters.AddWithValue("@category", entry.Category);
+        command.Parameters.AddWithValue("@description_solidus", entry.DescriptionSolidus);
+        command.Parameters.AddWithValue("@normalized_description_solidus", entry.NormalizedDescriptionSolidus);
+        command.Parameters.AddWithValue("@barcode", entry.Barcode);
+        command.Parameters.AddWithValue("@code_type", entry.CodeType);
+        command.Parameters.AddWithValue("@updated_at", entry.UpdatedAt);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<ConversionRule>> ListRulesAsync(CancellationToken cancellationToken = default)

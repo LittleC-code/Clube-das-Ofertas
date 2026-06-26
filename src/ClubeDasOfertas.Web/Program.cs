@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
+using Npgsql;
 using System.Globalization;
 using System.Security.Claims;
 using System.Text;
@@ -29,6 +30,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AdminOnly", policy => policy.RequireRole(Roles.Admin));
+    options.AddPolicy("CampaignOperatorOnly", policy => policy.RequireRole(Roles.Admin, Roles.Operator));
 });
 
 builder.Services.AddAntiforgery(options =>
@@ -177,18 +179,18 @@ app.MapPost("/setup", async (HttpContext context, AppRepository repository, IAnt
         return RedirectWithNotice("/setup", "A confirmação da senha não confere.");
     }
 
-    var account = await repository.CreateUserAsync(email, displayName, Roles.Admin, password, cancellationToken);
-    await repository.AddAuditAsync(null, account.Email, "Criou administrador inicial", "User", account.Id, "Configuração inicial do sistema", cancellationToken);
-
-    var claims = new List<Claim>
+    UserAccount account;
+    try
     {
-        new(ClaimTypes.NameIdentifier, account.Id.ToString()),
-        new(ClaimTypes.Email, account.Email),
-        new(ClaimTypes.Name, account.DisplayName),
-        new(ClaimTypes.Role, account.Role)
-    };
-    var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-    await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+        account = await repository.CreateUserAsync(email, displayName, Roles.Admin, password, cancellationToken);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return RedirectWithNotice("/setup", ex.Message);
+    }
+
+    await repository.AddAuditAsync(null, account.Email, "Criou administrador inicial", "User", account.Id, "Configuração inicial do sistema", cancellationToken);
+    await SignInUserAsync(context, account);
 
     return Results.Redirect("/campaigns");
 }).AllowAnonymous();
@@ -206,24 +208,64 @@ app.MapGet("/login", async (HttpContext context, AppRepository repository, IAnti
     }
 
     var antiForgeryField = AntiForgeryField(antiforgery, context);
-    var body = $$"""
-<section class="login">
-  <h1>Entrar</h1>
-  <form method="post" action="/login">
-    {{antiForgeryField}}
-    <div class="field">
-      <label>Email</label>
-      <input name="email" type="email" autocomplete="username" required autofocus>
-    </div>
-    <div class="field">
-      <label>Senha</label>
-      <input name="password" type="password" autocomplete="current-password" required>
-    </div>
-    <button type="submit">Entrar</button>
-  </form>
-</section>
-""";
+    var body = RenderLoginPage(antiForgeryField);
     return HtmlView.Page("Login", context.User, body, Notice(context.Request));
+}).AllowAnonymous();
+
+app.MapPost("/register", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
+{
+    await antiforgery.ValidateRequestAsync(context);
+
+    if (!await repository.HasUsersAsync(cancellationToken))
+    {
+        return Results.Redirect("/setup");
+    }
+
+    var form = await context.Request.ReadFormAsync(cancellationToken);
+    var displayName = form["display_name"].ToString().Trim();
+    var email = form["email"].ToString().Trim();
+    var password = form["password"].ToString();
+    var confirmPassword = form["confirm_password"].ToString();
+    var antiForgeryField = AntiForgeryField(antiforgery, context);
+
+    if (string.IsNullOrWhiteSpace(displayName) || string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+    {
+        return HtmlView.Page("Login", context.User, RenderLoginPage(antiForgeryField, registerError: "Preencha nome, email e senha para criar o usuário."), statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    if (!LooksLikeEmail(email))
+    {
+        return HtmlView.Page("Login", context.User, RenderLoginPage(antiForgeryField, registerError: "Informe um email válido."), statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    if (password.Length < 10)
+    {
+        return HtmlView.Page("Login", context.User, RenderLoginPage(antiForgeryField, registerError: "A senha precisa ter ao menos 10 caracteres."), statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    if (password != confirmPassword)
+    {
+        return HtmlView.Page("Login", context.User, RenderLoginPage(antiForgeryField, registerError: "A confirmação da senha não confere."), statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    if (await repository.GetUserByEmailAsync(email, cancellationToken) is not null)
+    {
+        return HtmlView.Page("Login", context.User, RenderLoginPage(antiForgeryField, registerError: "Já existe um usuário com esse email."), statusCode: StatusCodes.Status409Conflict);
+    }
+
+    UserAccount account;
+    try
+    {
+        account = await repository.CreateUserAsync(email, displayName, Roles.User, password, cancellationToken);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return HtmlView.Page("Login", context.User, RenderLoginPage(antiForgeryField, registerError: ex.Message), statusCode: StatusCodes.Status409Conflict);
+    }
+
+    await repository.AddAuditAsync(account.Id, account.Email, "Criou conta", "User", account.Id, "Auto cadastro pela tela de login", cancellationToken);
+    await SignInUserAsync(context, account);
+    return Results.Redirect("/campaigns");
 }).AllowAnonymous();
 
 app.MapPost("/login", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
@@ -243,36 +285,11 @@ app.MapPost("/login", async (HttpContext context, AppRepository repository, IAnt
     if (account is null || !account.IsActive || !PasswordHasher.Verify(password, account.PasswordHash))
     {
         var antiForgeryField = AntiForgeryField(antiforgery, context);
-        var body = $$"""
-<section class="login">
-  <h1>Entrar</h1>
-  <div class="notice error">Email ou senha inválidos.</div>
-  <form method="post" action="/login">
-    {{antiForgeryField}}
-    <div class="field">
-      <label>Email</label>
-      <input name="email" type="email" autocomplete="username" required autofocus>
-    </div>
-    <div class="field">
-      <label>Senha</label>
-      <input name="password" type="password" autocomplete="current-password" required>
-    </div>
-    <button type="submit">Entrar</button>
-  </form>
-</section>
-""";
+        var body = RenderLoginPage(antiForgeryField, loginError: "Email ou senha inválidos.");
         return HtmlView.Page("Login", context.User, body, statusCode: StatusCodes.Status401Unauthorized);
     }
 
-    var claims = new List<Claim>
-    {
-        new(ClaimTypes.NameIdentifier, account.Id.ToString()),
-        new(ClaimTypes.Email, account.Email),
-        new(ClaimTypes.Name, account.DisplayName),
-        new(ClaimTypes.Role, account.Role)
-    };
-    var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-    await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+    await SignInUserAsync(context, account);
     await repository.AddAuditAsync(account.Id, account.Email, "Login", "User", account.Id, "Usuário entrou no sistema", cancellationToken);
 
     return Results.Redirect("/campaigns");
@@ -296,6 +313,7 @@ app.MapGet("/denied", (HttpContext context, IAntiforgery antiforgery) =>
 
 app.MapGet("/campaigns", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
+    var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
     var campaigns = await repository.ListCampaignsAsync(cancellationToken);
     var antiForgeryField = AntiForgeryField(antiforgery, context);
     var campaignCards = new List<(Campaign Campaign, CampaignStats Stats)>(campaigns.Count);
@@ -305,7 +323,7 @@ app.MapGet("/campaigns", async (HttpContext context, AppRepository repository, I
         campaignCards.Add((campaign, stats));
     }
 
-    return HtmlView.Page("Campanhas", context.User, RenderCampaignDashboard(campaignCards, antiForgeryField), Notice(context.Request), antiForgeryField, pageClass: "page-campaign", headerTitle: "Campanhas");
+    return HtmlView.Page("Campanhas", context.User, RenderCampaignDashboard(campaignCards, currentUser, antiForgeryField), Notice(context.Request), antiForgeryField, pageClass: "page-campaign", headerTitle: "Campanhas");
 }).RequireAuthorization();
 
 app.MapPost("/campaigns", async (HttpContext context, AppRepository repository, CampaignImportService importService, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
@@ -353,7 +371,7 @@ app.MapPost("/campaigns", async (HttpContext context, AppRepository repository, 
     {
         return RedirectWithNotice($"/campaigns/{campaign.Id}", $"Campanha criada, mas a importação não foi concluída: {ex.Message}");
     }
-}).RequireAuthorization();
+}).RequireAuthorization("CampaignOperatorOnly");
 
 app.MapPost("/campaigns/{id:guid}/delete", async (Guid id, HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
@@ -368,11 +386,12 @@ app.MapPost("/campaigns/{id:guid}/delete", async (Guid id, HttpContext context, 
     await repository.DeleteCampaignAsync(id, cancellationToken);
     await repository.AddAuditAsync(currentUser.Id, currentUser.Email, "Excluiu campanha", "Campaign", id, campaign.Name, cancellationToken);
     return RedirectWithNotice("/campaigns", "Campanha excluída.");
-}).RequireAuthorization();
+}).RequireAuthorization("AdminOnly");
 
 app.MapGet("/campaigns/{id:guid}", async (Guid id, string? filter, string? q, HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
     var antiForgeryField = AntiForgeryField(antiforgery, context);
+    var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
     var campaign = await repository.GetCampaignAsync(id, cancellationToken);
     if (campaign is null)
     {
@@ -382,7 +401,7 @@ app.MapGet("/campaigns/{id:guid}", async (Guid id, string? filter, string? q, Ht
     var stats = await repository.GetCampaignStatsAsync(id, cancellationToken);
     var items = await repository.GetCampaignItemsAsync(id, cancellationToken);
     var visibleItems = ApplyCampaignSearch(ApplyFilter(items, filter), q).ToList();
-    var body = RenderCampaignDetails(campaign, stats, visibleItems, filter ?? "todos", q ?? "", antiForgeryField);
+    var body = RenderCampaignDetails(campaign, stats, visibleItems, currentUser, filter ?? "todos", q ?? "", antiForgeryField);
     return HtmlView.Page(campaign.Name, context.User, body, Notice(context.Request), antiForgeryField, pageClass: "page-campaign", headerTitle: "Campanhas");
 }).RequireAuthorization();
 
@@ -423,7 +442,7 @@ app.MapPost("/campaigns/{id:guid}/import", async (Guid id, HttpContext context, 
     {
         return RedirectWithNotice($"/campaigns/{id}", ex.Message);
     }
-}).RequireAuthorization();
+}).RequireAuthorization("CampaignOperatorOnly");
 
 app.MapPost("/worksheets", async (HttpContext context, SpreadsheetImporter importer, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
@@ -488,7 +507,7 @@ app.MapPost("/worksheets", async (HttpContext context, SpreadsheetImporter impor
             notice = ex.Message
         }, statusCode: StatusCodes.Status400BadRequest);
     }
-}).RequireAuthorization();
+}).RequireAuthorization("CampaignOperatorOnly");
 
 app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/approve", async (Guid campaignId, Guid itemId, HttpContext context, AppRepository repository, ReviewService reviewService, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
@@ -499,7 +518,7 @@ app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/approve", async (G
     var query = form["q"].ToString();
     await reviewService.ApproveAsync(itemId, currentUser, form["comment"].ToString(), cancellationToken);
     return await CampaignMutationResultAsync(campaignId, filter, query, "Item confirmado.", context, repository, antiforgery, cancellationToken);
-}).RequireAuthorization();
+}).RequireAuthorization("CampaignOperatorOnly");
 
 app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/reject", async (Guid campaignId, Guid itemId, HttpContext context, AppRepository repository, ReviewService reviewService, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
@@ -510,7 +529,7 @@ app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/reject", async (Gu
     var query = form["q"].ToString();
     await reviewService.RejectAsync(itemId, currentUser, form["comment"].ToString(), cancellationToken);
     return await CampaignMutationResultAsync(campaignId, filter, query, "Item rejeitado e mantido bloqueado.", context, repository, antiforgery, cancellationToken);
-}).RequireAuthorization();
+}).RequireAuthorization("CampaignOperatorOnly");
 
 app.MapPost("/campaigns/{campaignId:guid}/items/approve-all", async (Guid campaignId, HttpContext context, AppRepository repository, ReviewService reviewService, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
@@ -538,7 +557,7 @@ app.MapPost("/campaigns/{campaignId:guid}/items/approve-all", async (Guid campai
 
     var approved = await reviewService.ApproveManyAsync(itemIds, currentUser, form["comment"].ToString(), cancellationToken);
     return await CampaignMutationResultAsync(campaignId, filter, query, approved == 1 ? "1 item confirmado." : $"{approved} itens confirmados.", context, repository, antiforgery, cancellationToken);
-}).RequireAuthorization();
+}).RequireAuthorization("CampaignOperatorOnly");
 
 app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/save", async (Guid campaignId, Guid itemId, HttpContext context, AppRepository repository, CampaignItemEditorService editorService, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
@@ -574,7 +593,7 @@ app.MapPost("/campaigns/{campaignId:guid}/items/{itemId:guid}/save", async (Guid
     {
         return CampaignMutationError(campaignId, filter, query, ex.Message, context);
     }
-}).RequireAuthorization();
+}).RequireAuthorization("CampaignOperatorOnly");
 
 app.MapPost("/campaigns/{campaignId:guid}/items/add", async (Guid campaignId, HttpContext context, AppRepository repository, CampaignItemEditorService editorService, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
@@ -610,7 +629,7 @@ app.MapPost("/campaigns/{campaignId:guid}/items/add", async (Guid campaignId, Ht
     {
         return CampaignMutationError(campaignId, filter, query, ex.Message, context);
     }
-}).RequireAuthorization();
+}).RequireAuthorization("CampaignOperatorOnly");
 
 app.MapPost("/campaigns/{id:guid}/export", async (Guid id, HttpContext context, AppRepository repository, ExportService exportService, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
@@ -654,7 +673,7 @@ app.MapPost("/campaigns/{id:guid}/export", async (Guid id, HttpContext context, 
     {
         return RedirectWithNotice(BuildCampaignPath(campaign.Id, filter, query), ex.Message);
     }
-}).RequireAuthorization();
+}).RequireAuthorization("CampaignOperatorOnly");
 
 app.MapGet("/exports/{id:guid}/download", async (Guid id, AppRepository repository, CancellationToken cancellationToken) =>
 {
@@ -668,7 +687,7 @@ app.MapGet("/exports/{id:guid}/download", async (Guid id, AppRepository reposito
         ? Convert.FromBase64String(export.Content)
         : Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(export.Content)).ToArray();
     return Results.File(bytes, export.ContentType, export.FileName);
-}).RequireAuthorization();
+}).RequireAuthorization("CampaignOperatorOnly");
 
 app.MapGet("/catalog", async (string? q, string? category, HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
 {
@@ -754,6 +773,103 @@ app.MapPost("/catalog/create", async (HttpContext context, AppRepository reposit
         cancellationToken);
 
     return RedirectWithNotice(redirectPath, "Item do catalogo cadastrado ou atualizado.");
+}).RequireAuthorization("AdminOnly");
+
+app.MapPost("/catalog/{id:guid}/delete", async (Guid id, HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
+{
+    await antiforgery.ValidateRequestAsync(context);
+    var form = await context.Request.ReadFormAsync(cancellationToken);
+    var currentQuery = form["current_query"].ToString();
+    var currentCategory = form["current_category"].ToString();
+    var redirectPath = BuildCatalogPath(currentQuery, currentCategory);
+    var entry = await repository.GetCatalogEntryAsync(id, cancellationToken);
+    if (entry is null)
+    {
+        return RedirectWithNotice(redirectPath, "Item do catalogo nao encontrado.");
+    }
+
+    var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
+    await repository.DeleteCatalogEntryAsync(id, cancellationToken);
+    await repository.AddAuditAsync(
+        currentUser.Id,
+        currentUser.Email,
+        "Excluiu item do catalogo",
+        "ProductCatalog",
+        id,
+        $"{entry.DescriptionTabloid} ({entry.Barcode})",
+        cancellationToken);
+
+    return RedirectWithNotice(redirectPath, "Item do catalogo excluido.");
+}).RequireAuthorization("AdminOnly");
+
+app.MapPost("/catalog/{id:guid}/save", async (Guid id, HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
+{
+    await antiforgery.ValidateRequestAsync(context);
+    var form = await context.Request.ReadFormAsync(cancellationToken);
+    var currentQuery = form["current_query"].ToString();
+    var currentCategory = form["current_category"].ToString();
+    var redirectPath = BuildCatalogPath(currentQuery, currentCategory);
+    var existingEntry = await repository.GetCatalogEntryAsync(id, cancellationToken);
+    if (existingEntry is null)
+    {
+        return RedirectWithNotice(redirectPath, "Item do catalogo nao encontrado.");
+    }
+
+    var descriptionTabloid = form["description_tabloid"].ToString().Trim();
+    var categoryName = form["category_name"].ToString().Trim();
+    var descriptionSolidus = form["description_solidus"].ToString().Trim();
+    var barcode = form["barcode"].ToString().Trim();
+
+    if (string.IsNullOrWhiteSpace(descriptionTabloid) || string.IsNullOrWhiteSpace(categoryName) || string.IsNullOrWhiteSpace(barcode))
+    {
+        return RedirectWithNotice(redirectPath, "Descricao tabloide, categoria e codigo de barras sao obrigatorios.");
+    }
+
+    var codeType = Parsing.CodeType(barcode);
+    if (string.IsNullOrWhiteSpace(codeType))
+    {
+        return RedirectWithNotice(redirectPath, "Informe um codigo de barras com digitos validos.");
+    }
+
+    var resolvedSolidus = string.IsNullOrWhiteSpace(descriptionSolidus)
+        ? descriptionTabloid
+        : descriptionSolidus;
+
+    var updatedEntry = existingEntry with
+    {
+        DescriptionTabloid = descriptionTabloid,
+        NormalizedDescriptionTabloid = TextNormalizer.NormalizeKey(descriptionTabloid),
+        Category = categoryName,
+        DescriptionSolidus = resolvedSolidus,
+        NormalizedDescriptionSolidus = TextNormalizer.NormalizeKey(resolvedSolidus),
+        Barcode = barcode,
+        CodeType = codeType,
+        UpdatedAt = DateTimeOffset.UtcNow
+    };
+
+    try
+    {
+        await repository.UpdateCatalogEntryAsync(updatedEntry, cancellationToken);
+    }
+    catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+    {
+        return RedirectWithNotice(redirectPath, "Ja existe um item no catalogo com a mesma descricao tabloide e codigo de barras.");
+    }
+
+    var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
+    var auditDetails = existingEntry.DescriptionTabloid == updatedEntry.DescriptionTabloid && existingEntry.Barcode == updatedEntry.Barcode
+        ? $"{updatedEntry.DescriptionTabloid} ({updatedEntry.Barcode})"
+        : $"{existingEntry.DescriptionTabloid} ({existingEntry.Barcode}) -> {updatedEntry.DescriptionTabloid} ({updatedEntry.Barcode})";
+    await repository.AddAuditAsync(
+        currentUser.Id,
+        currentUser.Email,
+        "Editou item do catalogo",
+        "ProductCatalog",
+        id,
+        auditDetails,
+        cancellationToken);
+
+    return RedirectWithNotice(redirectPath, "Item do catalogo atualizado.");
 }).RequireAuthorization("AdminOnly");
 
 app.MapGet("/rules", async (HttpContext context, AppRepository repository, IAntiforgery antiforgery, CancellationToken cancellationToken) =>
@@ -891,15 +1007,21 @@ app.MapGet("/history", async (HttpContext context, AppRepository repository, IAn
     var exports = await repository.ListExportsAsync(cancellationToken);
     var logs = await repository.ListAuditLogsAsync(cancellationToken);
     return HtmlView.Page("Histórico", context.User, RenderHistory(exports, logs), antiForgeryField: AntiForgeryField(antiforgery, context), pageClass: "page-campaign", headerTitle: "Histórico");
-}).RequireAuthorization();
+}).RequireAuthorization("AdminOnly");
 
 app.Run();
 
-static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, CampaignStats Stats)> campaigns, string antiForgeryField)
+static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, CampaignStats Stats)> campaigns, UserAccount currentUser, string antiForgeryField)
 {
+    var canOperateCampaigns = PermissionMatrix.CanOperateCampaigns(currentUser.Role);
+    var canDeleteCampaigns = PermissionMatrix.CanDeleteCampaigns(currentUser.Role);
     var body = new StringBuilder();
     body.AppendLine("""
 <div class="campaign-shell">
+""");
+    if (canOperateCampaigns)
+    {
+        body.AppendLine("""
   <section class="panel catalog-results-panel">
     <div class="panel-header">
       <div>
@@ -943,6 +1065,24 @@ static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, Campaign
       </div>
     </form>
   </section>
+""");
+    }
+    else
+    {
+        body.AppendLine("""
+  <section class="panel catalog-results-panel">
+    <div class="panel-header">
+      <div>
+        <h2>Consulta de campanhas</h2>
+        <p class="panel-subtitle">Seu perfil pode acompanhar campanhas e itens, mas não criar, importar, exportar ou editar dados operacionais.</p>
+      </div>
+    </div>
+    <div class="empty-state">Se precisar de ações operacionais, solicite um perfil com mais permissões ao administrador.</div>
+  </section>
+""");
+    }
+
+    body.AppendLine("""
   <section class="panel catalog-results-panel">
     <div class="panel-header">
       <div>
@@ -957,7 +1097,9 @@ static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, Campaign
 
     if (campaigns.Count == 0)
     {
-        body.AppendLine("""    <div class="empty-state">Nenhuma campanha criada ainda. Use o formulário ao lado para abrir a primeira campanha e, se quiser, já importar o arquivo inicial.</div>""");
+        body.AppendLine(canOperateCampaigns
+            ? """    <div class="empty-state">Nenhuma campanha criada ainda. Use o formulário ao lado para abrir a primeira campanha e, se quiser, já importar o arquivo inicial.</div>"""
+            : """    <div class="empty-state">Nenhuma campanha disponível para consulta ainda.</div>""");
         body.AppendLine("  </section>");
         body.AppendLine("</div>");
         return body.ToString();
@@ -1000,10 +1142,14 @@ static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, Campaign
         <div class="campaign-cell campaign-action" data-label="Ações">
           <div class="inline-actions">
             <a class="button secondary" href="/campaigns/{entry.Campaign.Id}">Abrir</a>
+            {(canDeleteCampaigns
+                ? $"""
             <form method="post" action="/campaigns/{entry.Campaign.Id}/delete" onsubmit="return confirm('Excluir esta campanha? Essa ação remove itens, revisões e exportações ligadas a ela.');">
               {antiForgeryField}
               <button class="danger" type="submit">Excluir</button>
             </form>
+"""
+                : "")}
           </div>
         </div>
       </article>
@@ -1019,8 +1165,12 @@ static string RenderCampaignDashboard(IReadOnlyList<(Campaign Campaign, Campaign
     return body.ToString();
 }
 
-static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IReadOnlyList<CampaignItem> items, string filter, string query, string antiForgeryField)
+static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IReadOnlyList<CampaignItem> items, UserAccount currentUser, string filter, string query, string antiForgeryField)
 {
+    var canOperateCampaigns = PermissionMatrix.CanOperateCampaigns(currentUser.Role);
+    var detailSubtitle = canOperateCampaigns
+        ? "Corrija descrição, código de barras, quantidade e preço diretamente aqui quando precisar ajustar um item antes da exportação."
+        : "Consulte itens, riscos e pendências desta campanha. Seu perfil não pode editar, revisar ou exportar dados operacionais.";
     var normalizedFilter = NormalizeFilter(filter);
     var normalizedQuery = (query ?? "").Trim();
     var filterField = $"""<input type="hidden" name="filter" value="{HtmlView.E(normalizedFilter)}">""";
@@ -1034,7 +1184,7 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
         : "";
     var exportLabel = stats.BlockingItems > 0 ? "Exportar CSV personalizado com pendências" : "Exportar CSV personalizado";
     var exportColumnsPanel = RenderExportColumnsPanel();
-    var exportButton = stats.TotalItems > 0
+    var exportButton = canOperateCampaigns && stats.TotalItems > 0
         ? $"""
 <form method="post" action="/campaigns/{campaign.Id}/export"{exportConfirm}>
   {antiForgeryField}
@@ -1044,8 +1194,8 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
   <button type="submit" onclick="this.form.elements['format'].value='';">{exportLabel}</button>
 </form>
 """
-        : """<span class="button secondary">Sem itens para exportar</span>""";
-    var approveAllButton = visibleReviewableItems > 0
+        : "";
+    var approveAllButton = canOperateCampaigns && visibleReviewableItems > 0
         ? $"""
 <form method="post" action="/campaigns/{campaign.Id}/items/approve-all" class="async-campaign-form">
   {antiForgeryField}
@@ -1056,7 +1206,8 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
   </form>
 """
         : "";
-    var manualItemSection = $"""
+    var manualItemSection = canOperateCampaigns
+        ? $"""
 <section class="panel">
   <div class="panel-header">
     <div>
@@ -1102,7 +1253,8 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
     </div>
   </form>
 </section>
-""";
+"""
+        : "";
 
     var body = new StringBuilder();
     body.AppendLine($"""
@@ -1114,7 +1266,7 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
   <div class="panel-header">
     <div>
       <h2>Revisar e exportar itens</h2>
-      <p class="panel-subtitle">Corrija descrição, código de barras, quantidade e preço diretamente aqui quando precisar ajustar um item antes da exportação.</p>
+      <p class="panel-subtitle">{HtmlView.E(detailSubtitle)}</p>
     </div>
   </div>
   <div class="toolbar campaign-toolbar">
@@ -1149,7 +1301,7 @@ static string RenderCampaignDetails(Campaign campaign, CampaignStats stats, IRea
   </thead>
   <tbody id="campaign-items-body">
 """);
-    body.Append(RenderCampaignItemsTableBody(campaign, items, normalizedFilter, normalizedQuery, antiForgeryField));
+    body.Append(RenderCampaignItemsTableBody(campaign, items, currentUser, normalizedFilter, normalizedQuery, antiForgeryField));
     body.AppendLine("""
   </tbody>
 </table>
@@ -1257,7 +1409,7 @@ static string RenderCampaignStats(CampaignStats stats)
 """;
 }
 
-static string RenderCampaignItemsTableBody(Campaign campaign, IReadOnlyList<CampaignItem> items, string filter, string query, string antiForgeryField)
+static string RenderCampaignItemsTableBody(Campaign campaign, IReadOnlyList<CampaignItem> items, UserAccount currentUser, string filter, string query, string antiForgeryField)
 {
     var body = new StringBuilder();
 
@@ -1269,7 +1421,7 @@ static string RenderCampaignItemsTableBody(Campaign campaign, IReadOnlyList<Camp
 
     foreach (var item in items)
     {
-        body.Append(RenderCampaignItemRows(campaign, item, filter, query, antiForgeryField));
+        body.Append(RenderCampaignItemRows(campaign, item, currentUser, filter, query, antiForgeryField));
     }
 
     return body.ToString();
@@ -1327,8 +1479,9 @@ static string RenderExportColumnsPanel()
     return builder.ToString();
 }
 
-static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, string filter, string query, string antiForgeryField)
+static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, UserAccount currentUser, string filter, string query, string antiForgeryField)
 {
+    var canOperateCampaigns = PermissionMatrix.CanOperateCampaigns(currentUser.Role);
     var filterField = $"""<input type="hidden" name="filter" value="{HtmlView.E(filter)}">""";
     var queryField = $"""<input type="hidden" name="q" value="{HtmlView.E((query ?? "").Trim())}">""";
     var canReview = IsReviewableItem(item);
@@ -1342,7 +1495,9 @@ static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, strin
     var priceClubInputValue = string.IsNullOrWhiteSpace(item.PriceClubRaw)
         ? Parsing.MoneyPtBr(item.FinalPriceClub)
         : item.PriceClubRaw;
-    var actionButtons = canReview
+    var actionButtons = !canOperateCampaigns
+        ? ""
+        : canReview
         ? $"""
   <form method="post" action="/campaigns/{campaign.Id}/items/{item.Id}/approve" class="async-campaign-form">
     {antiForgeryField}
@@ -1385,19 +1540,8 @@ static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, strin
 </div>
 """;
 
-    return $"""
-<tr id="item-{item.Id}">
-  <td>{HtmlView.StatusBadge(item)}</td>
-  <td>{HtmlView.SourceBadge(item.Source)}</td>
-  <td class="campaign-risks-cell">{HtmlView.Badges(item.RiskFlags)}</td>
-  <td>{item.SourceRow}</td>
-  <td class="campaign-description-cell">{HtmlView.E(item.DescriptionTabloid)}</td>
-  <td class="campaign-description-cell">{solidusDetails}</td>
-  <td class="mono">{HtmlView.E(item.Barcode)}</td>
-  <td>{originalPriceDetails}</td>
-  <td>{finalPriceDetails}</td>
-  <td>{HtmlView.Badges(item.BlockingReasons)}</td>
-</tr>
+    var editRow = canOperateCampaigns
+        ? $"""
 <tr class="item-edit-row" id="edit-{item.Id}" hidden>
   <td colspan="10">
     <div class="item-edit-card">
@@ -1452,6 +1596,23 @@ static string RenderCampaignItemRows(Campaign campaign, CampaignItem item, strin
     </div>
   </td>
 </tr>
+"""
+        : "";
+
+    return $"""
+<tr id="item-{item.Id}">
+  <td>{HtmlView.StatusBadge(item)}</td>
+  <td>{HtmlView.SourceBadge(item.Source)}</td>
+  <td class="campaign-risks-cell">{HtmlView.Badges(item.RiskFlags)}</td>
+  <td>{item.SourceRow}</td>
+  <td class="campaign-description-cell">{HtmlView.E(item.DescriptionTabloid)}</td>
+  <td class="campaign-description-cell">{solidusDetails}</td>
+  <td class="mono campaign-code-cell">{HtmlView.E(item.Barcode)}</td>
+  <td class="campaign-price-cell">{originalPriceDetails}</td>
+  <td class="campaign-price-cell">{finalPriceDetails}</td>
+  <td class="campaign-pending-cell">{HtmlView.Badges(item.BlockingReasons)}</td>
+</tr>
+{editRow}
 """;
 }
 
@@ -1610,6 +1771,7 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
     {
         var displayCategory = TextNormalizer.DisplayCatalogCategory(entry.Category);
         var categoryColor = CatalogCategoryColor(displayCategory);
+        var editTargetId = $"edit-catalog-{entry.Id}";
         body.AppendLine($"""
       <article class="catalog-item" style="--category-accent:{categoryColor}">
         <div class="catalog-item-main">
@@ -1620,6 +1782,47 @@ static string RenderCatalog(IReadOnlyList<ProductCatalogEntry> entries, IReadOnl
           <div><label>Categoria</label><span class="catalog-category-pill">{HtmlView.E(displayCategory)}</span></div>
           <div><label>Código</label><span class="mono">{HtmlView.E(entry.Barcode)}</span></div>
           <div><label>Tipo</label><span>{HtmlView.E(DisplayCatalogCodeType(entry.CodeType))}</span></div>
+        </div>
+        <div class="catalog-item-actions">
+          <button class="ghost" type="button" data-edit-toggle="{editTargetId}">Editar</button>
+          <form method="post" action="/catalog/{entry.Id}/delete" onsubmit="return confirm('Excluir este item do catalogo?');">
+            {antiForgeryField}
+            <input type="hidden" name="current_query" value="{HtmlView.E(query)}">
+            <input type="hidden" name="current_category" value="{HtmlView.E(selectedCategory)}">
+            <button class="danger" type="submit">Excluir</button>
+          </form>
+        </div>
+        <div class="item-edit-card" id="{editTargetId}" hidden>
+          <form method="post" action="/catalog/{entry.Id}/save">
+            {antiForgeryField}
+            <input type="hidden" name="current_query" value="{HtmlView.E(query)}">
+            <input type="hidden" name="current_category" value="{HtmlView.E(selectedCategory)}">
+            <div class="item-edit-grid">
+              <div class="field span-2">
+                <label>Descricao tabloide</label>
+                <input name="description_tabloid" value="{HtmlView.E(entry.DescriptionTabloid)}" required>
+              </div>
+              <div class="field">
+                <label>Categoria</label>
+                <input name="category_name" value="{HtmlView.E(displayCategory)}" required>
+              </div>
+              <div class="field span-2">
+                <label>Descricao Solidus</label>
+                <input name="description_solidus" value="{HtmlView.E(entry.DescriptionSolidus)}" placeholder="Se vazio, usa a descricao tabloide.">
+              </div>
+              <div class="field">
+                <label>Codigo de barras</label>
+                <input name="barcode" value="{HtmlView.E(entry.Barcode)}" inputmode="numeric" required>
+              </div>
+              <div class="field span-3">
+                <div class="form-actions">
+                  <button type="submit">Salvar alteracoes</button>
+                  <button class="secondary" type="button" data-edit-close="{editTargetId}">Fechar</button>
+                  <span class="muted">O tipo do codigo e recalculado automaticamente ao salvar.</span>
+                </div>
+              </div>
+            </div>
+          </form>
         </div>
       </article>
 """);
@@ -1788,7 +1991,7 @@ foreach (var rule in rules)
   </td>
   <td>{rule.Multiplier:0.####}</td>
   <td>
-    <div class="inline-actions">
+    <div class="form-actions rule-actions">
       <button class="ghost" type="button" data-edit-toggle="edit-{rule.Id}">Editar</button>
       <form method="post" action="/rules/{rule.Id}/toggle">{antiForgeryField}<button class="secondary" type="submit">Alternar</button></form>
       <form method="post" action="/rules/{rule.Id}/delete" onsubmit="return confirm('Excluir esta regra?');">{antiForgeryField}<button class="danger" type="submit">Excluir</button></form>
@@ -1962,6 +2165,7 @@ static async Task<IResult> CampaignMutationResultAsync(
 
     var stats = await repository.GetCampaignStatsAsync(campaignId, cancellationToken);
     var items = await repository.GetCampaignItemsAsync(campaignId, cancellationToken);
+    var currentUser = await CurrentUserAsync(context, repository, cancellationToken);
     var antiForgeryField = AntiForgeryField(antiforgery, context);
     var normalizedFilter = NormalizeFilter(filter);
     var normalizedQuery = (query ?? "").Trim();
@@ -1972,7 +2176,7 @@ static async Task<IResult> CampaignMutationResultAsync(
         ok = true,
         notice,
         statsHtml = RenderCampaignStats(stats),
-        tableBodyHtml = RenderCampaignItemsTableBody(campaign, visibleItems, normalizedFilter, normalizedQuery, antiForgeryField)
+        tableBodyHtml = RenderCampaignItemsTableBody(campaign, visibleItems, currentUser, normalizedFilter, normalizedQuery, antiForgeryField)
     });
 }
 
@@ -2121,8 +2325,11 @@ static string DisplayRuleName(string ruleName)
     {
         return action switch
         {
+            "Criou conta" => "Criou conta",
             "Importou catalogo" => "Importou catálogo",
             "Cadastrou item no catalogo" => "Cadastrou item no catálogo",
+            "Editou item do catalogo" => "Editou item do catálogo",
+            "Excluiu item do catalogo" => "Excluiu item do catálogo",
             "Aprovou revisao" => "Aprovou revisão",
             "Rejeitou revisao" => "Rejeitou revisão",
             _ => action
@@ -2147,6 +2354,7 @@ static string DisplayAuditDetails(string details)
     return details switch
     {
         "Bootstrap inicial do sistema" => "Configuração inicial do sistema",
+        "Auto cadastro pela tela de login" => "Auto cadastro pela tela de login",
         "Usuario entrou no sistema" => "Usuário entrou no sistema",
         "Ativar/desativar" => "Ativar ou desativar",
         var value => DisplayRuleName(value)
@@ -2228,6 +2436,79 @@ static string BuildCategoryFloatingLabel(int count, int total)
 {
     var percentage = total <= 0 ? 0d : (double)count / total * 100d;
     return $"{count} item(ns) • {percentage.ToString("0.#", CultureInfo.GetCultureInfo("pt-BR"))}%";
+}
+
+static async Task SignInUserAsync(HttpContext context, UserAccount account)
+{
+    var claims = new List<Claim>
+    {
+        new(ClaimTypes.NameIdentifier, account.Id.ToString()),
+        new(ClaimTypes.Email, account.Email),
+        new(ClaimTypes.Name, account.DisplayName),
+        new(ClaimTypes.Role, account.Role)
+    };
+    var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+    await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+}
+
+static string RenderLoginPage(string antiForgeryField, string loginError = "", string registerError = "")
+{
+    var loginErrorHtml = string.IsNullOrWhiteSpace(loginError)
+        ? ""
+        : $"""<div class="notice error">{HtmlView.E(loginError)}</div>""";
+    var registerErrorHtml = string.IsNullOrWhiteSpace(registerError)
+        ? ""
+        : $"""<div class="notice error">{HtmlView.E(registerError)}</div>""";
+
+    return $$"""
+<section class="login">
+  <h1>Entrar</h1>
+  {{loginErrorHtml}}
+  <form method="post" action="/login">
+    {{antiForgeryField}}
+    <div class="field">
+      <label>Email</label>
+      <input name="email" type="email" autocomplete="username" required autofocus>
+    </div>
+    <div class="field">
+      <label>Senha</label>
+      <input name="password" type="password" autocomplete="current-password" required>
+    </div>
+    <div class="form-actions">
+      <button type="submit">Entrar</button>
+      <span class="muted">Use seu acesso existente para entrar no sistema.</span>
+    </div>
+  </form>
+</section>
+<section class="login" style="margin-top:16px">
+  <h2>Criar usuário</h2>
+  <p class="muted">Novos cadastros entram com perfil limitado, sem acesso às áreas administrativas.</p>
+  {{registerErrorHtml}}
+  <form method="post" action="/register">
+    {{antiForgeryField}}
+    <div class="field">
+      <label>Nome</label>
+      <input name="display_name" autocomplete="name" required>
+    </div>
+    <div class="field">
+      <label>Email</label>
+      <input name="email" type="email" autocomplete="email" required>
+    </div>
+    <div class="field">
+      <label>Senha</label>
+      <input name="password" type="password" autocomplete="new-password" required>
+    </div>
+    <div class="field">
+      <label>Confirmar senha</label>
+      <input name="confirm_password" type="password" autocomplete="new-password" required>
+    </div>
+    <div class="form-actions">
+      <button type="submit">Criar usuário</button>
+      <span class="muted">Depois do cadastro, o acesso é liberado automaticamente com permissões limitadas.</span>
+    </div>
+  </form>
+</section>
+""";
 }
 
 static bool LooksLikeEmail(string value)

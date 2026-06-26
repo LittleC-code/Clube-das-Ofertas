@@ -1,4 +1,4 @@
-using ClubeDasOfertas.Web.Domain;
+﻿using ClubeDasOfertas.Web.Domain;
 using ClubeDasOfertas.Web.Services;
 using System.Net;
 using System.Security.Claims;
@@ -19,6 +19,14 @@ public static class HtmlView
         var displayName = signedIn ? user.FindFirstValue(ClaimTypes.Name) ?? user.Identity?.Name ?? "" : "";
         var role = signedIn ? user.FindFirstValue(ClaimTypes.Role) ?? "" : "";
         var displayRole = signedIn ? DisplayRole(role) : "";
+        var canManageAdminAreas = PermissionMatrix.CanManageAdminAreas(role);
+        var adminLinks = canManageAdminAreas
+            ? """
+    <a href="/catalog">Catalogo de produtos</a>
+    <a href="/rules">Regras</a>
+    <a href="/history">Historico</a>
+"""
+            : "";
         var isCampaignTheme = pageClass.Contains("page-campaign", StringComparison.OrdinalIgnoreCase);
         var brand = isCampaignTheme
             ? $$"""
@@ -33,9 +41,7 @@ public static class HtmlView
   </button>
   <nav id="site-menu-panel" class="menu-panel" aria-label="Navegacao principal">
     <a href="/campaigns">Campanhas</a>
-    <a href="/catalog">Catálogo de produtos</a>
-    <a href="/rules">Regras</a>
-    <a href="/history">Histórico</a>
+    {{adminLinks}}
     <form method="post" action="/logout">{{antiForgeryField}}<button class="menu-link" type="submit">Sair</button></form>
   </nav>
 </aside>
@@ -54,9 +60,7 @@ public static class HtmlView
                 : $$"""
               <nav class="nav">
                 <a href="/campaigns">Campanhas</a>
-                <a href="/catalog">Catálogo de produtos</a>
-                <a href="/rules">Regras</a>
-                <a href="/history">Histórico</a>
+                {{adminLinks}}
                 <form method="post" action="/logout">{{antiForgeryField}}<button class="ghost" type="submit">Sair</button></form>
               </nav>
               <div class="userbox">{E(displayName)} <span>{E(displayRole)}</span></div>
@@ -328,6 +332,12 @@ public static class HtmlView
       flex-wrap: wrap;
       margin-top: 4px;
     }
+    .rule-actions {
+      margin-top: 0;
+    }
+    .rule-actions form {
+      margin: 0;
+    }
     .notice {
       margin-bottom: 14px;
       padding: 10px 12px;
@@ -539,7 +549,7 @@ public static class HtmlView
       font-weight: 800;
     }
     .catalog-manual-entry[open] .catalog-manual-entry-toggle::after {
-      content: "−";
+      content: "âˆ’";
     }
     .catalog-manual-entry[open] .catalog-manual-entry-toggle::after {
       content: "-";
@@ -840,6 +850,16 @@ public static class HtmlView
     .catalog-item-meta span {
       display: block;
       word-break: break-word;
+    }
+    .catalog-item-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .catalog-item-actions form {
+      margin: 0;
     }
     .catalog-category-pill {
       display: inline-flex;
@@ -1376,19 +1396,52 @@ public static class HtmlView
       border-color: var(--brand);
       background: rgba(255, 237, 0, 0.32);
     }
+    body.page-campaign [data-campaign-detail] table {
+      min-width: 0;
+      table-layout: fixed;
+    }
     body.page-campaign [data-campaign-detail] th,
     body.page-campaign [data-campaign-detail] td {
-      white-space: nowrap;
+      white-space: normal;
+      padding: 8px 8px;
+    }
+    body.page-campaign [data-campaign-detail] th:nth-child(1),
+    body.page-campaign [data-campaign-detail] td:nth-child(1) {
+      width: 98px;
+    }
+    body.page-campaign [data-campaign-detail] th:nth-child(2),
+    body.page-campaign [data-campaign-detail] td:nth-child(2) {
+      width: 98px;
+    }
+    body.page-campaign [data-campaign-detail] th:nth-child(3),
+    body.page-campaign [data-campaign-detail] td:nth-child(3) {
+      width: 170px;
+    }
+    body.page-campaign [data-campaign-detail] th:nth-child(4),
+    body.page-campaign [data-campaign-detail] td:nth-child(4) {
+      width: 58px;
     }
     body.page-campaign [data-campaign-detail] .campaign-description-cell {
       white-space: normal;
-      min-width: 240px;
+      min-width: 0;
       line-height: 1.45;
       word-break: break-word;
     }
     body.page-campaign [data-campaign-detail] .campaign-risks-cell {
       white-space: normal;
-      min-width: 180px;
+      min-width: 0;
+    }
+    body.page-campaign [data-campaign-detail] .campaign-code-cell {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    body.page-campaign [data-campaign-detail] .campaign-price-cell,
+    body.page-campaign [data-campaign-detail] .campaign-pending-cell {
+      min-width: 0;
+    }
+    body.page-campaign [data-campaign-detail] .campaign-pending-cell .badges {
+      flex-wrap: wrap;
     }
     body.page-campaign [data-campaign-detail] .campaign-risks-cell .badges {
       flex-wrap: wrap;
@@ -1830,7 +1883,7 @@ public static class HtmlView
           const extension = file.name.split('.').pop()?.toLowerCase() || '';
           if (extension === 'csv' || extension === 'txt') {
             updateSheetOptions(select, [{ value: defaultSheet, label: 'Arquivo sem abas (CSV/TXT)' }], defaultSheet);
-            setHint('Arquivos CSV ou TXT não possuem abas. A importação segue direto pelo arquivo.');
+            setHint('Arquivos CSV ou TXT nÃ£o possuem abas. A importaÃ§Ã£o segue direto pelo arquivo.');
             return;
           }
 
@@ -1841,7 +1894,7 @@ public static class HtmlView
           }
 
           updateSheetOptions(select, [{ value: defaultSheet, label: 'Carregando abas...' }], defaultSheet);
-          setHint('Lendo as abas disponíveis da planilha...');
+          setHint('Lendo as abas disponÃ­veis da planilha...');
 
           try {
             const response = await fetch('/worksheets', {
@@ -1856,20 +1909,20 @@ public static class HtmlView
             const payload = await response.json();
             if (!response.ok || !payload.ok) {
               resetToDefault();
-              setHint(payload.notice || 'Não foi possível ler as abas desse arquivo.', true);
+              setHint(payload.notice || 'NÃ£o foi possÃ­vel ler as abas desse arquivo.', true);
               return;
             }
 
             if (!payload.supportsSheets) {
               updateSheetOptions(select, [{ value: defaultSheet, label: 'Arquivo sem abas (CSV/TXT)' }], defaultSheet);
-              setHint(payload.notice || 'Esse arquivo não possui abas para selecionar.');
+              setHint(payload.notice || 'Esse arquivo nÃ£o possui abas para selecionar.');
               return;
             }
 
             const worksheets = Array.isArray(payload.worksheets) ? payload.worksheets : [];
             if (worksheets.length === 0) {
               resetToDefault();
-              setHint('Nenhuma aba disponível foi encontrada nesse arquivo.', true);
+              setHint('Nenhuma aba disponÃ­vel foi encontrada nesse arquivo.', true);
               return;
             }
 
@@ -1885,13 +1938,13 @@ public static class HtmlView
 
       const normalizeExpression = (value) =>
         value
-          .replace(/[xX×]/g, '*')
-          .replace(/÷/g, '/');
+          .replace(/[xXÃ—]/g, '*')
+          .replace(/Ã·/g, '/');
 
       const sanitizeQuantityExpression = (value) =>
-        normalizeExpression(stripQuantityWords(value).replace(/[^\d\s,.\-+*/()xX×÷]/g, ''));
+        normalizeExpression(stripQuantityWords(value).replace(/[^\d\s,.\-+*/()xXÃ—Ã·]/g, ''));
 
-      const isQuantityLetter = (char) => /[A-Za-zÀ-ÿ]/.test(char);
+      const isQuantityLetter = (char) => /[A-Za-zÃ€-Ã¿]/.test(char);
 
       const stripQuantityWords = (value) => {
         const input = (value || '').trim();
@@ -2095,7 +2148,7 @@ public static class HtmlView
           const quantityValue = quantityInput.value.trim();
           const saleValue = saleInput.value.trim();
           const clubValue = clubInput.value.trim();
-          const defaultPreviewHtml = `<strong>Preview da conta</strong><div>Digite a quantidade ou os preços para visualizar o resultado antes de salvar.</div>`;
+          const defaultPreviewHtml = `<strong>Preview da conta</strong><div>Digite a quantidade ou os preÃ§os para visualizar o resultado antes de salvar.</div>`;
 
           if (!quantityValue && !saleValue && !clubValue) {
             preview.innerHTML = defaultPreviewHtml;
@@ -2118,29 +2171,29 @@ public static class HtmlView
               }
             }
           } catch {
-            lines.push('Quantidade: conta inválida');
+            lines.push('Quantidade: conta invÃ¡lida');
           }
 
           try {
             if (saleValue) {
               const saleResult = evaluateExpression(saleValue);
               if (saleResult !== null) {
-                lines.push(`Preço venda: ${moneyFormatter.format(saleResult)}`);
+                lines.push(`PreÃ§o venda: ${moneyFormatter.format(saleResult)}`);
               }
             }
           } catch {
-            lines.push('Preço venda: conta inválida');
+            lines.push('PreÃ§o venda: conta invÃ¡lida');
           }
 
           try {
             if (clubValue) {
               const clubResult = evaluateExpression(clubValue);
               if (clubResult !== null) {
-                lines.push(`Preço clube: ${moneyFormatter.format(clubResult)}`);
+                lines.push(`PreÃ§o clube: ${moneyFormatter.format(clubResult)}`);
               }
             }
           } catch {
-            lines.push('Preço clube: conta inválida');
+            lines.push('PreÃ§o clube: conta invÃ¡lida');
           }
 
           if (lines.length === 0) {
@@ -2273,22 +2326,22 @@ public static class HtmlView
     {
         return TextNormalizer.NormalizeKey(value) switch
         {
-            "SEM_CATALOGO" => "Sem catálogo",
-            "PRECO_INVALIDO" => "Preço inválido",
-            "QUANTIDADE_INVALIDA" => "Quantidade inválida",
-            "PESAVEL" => "Pesável",
+            "SEM_CATALOGO" => "Sem catÃ¡logo",
+            "PRECO_INVALIDO" => "PreÃ§o invÃ¡lido",
+            "QUANTIDADE_INVALIDA" => "Quantidade invÃ¡lida",
+            "PESAVEL" => "PesÃ¡vel",
             "FARDO_CAIXA" => "Fardo/Caixa",
             "FARDO" => "Fardo",
             "CAIXA" => "Caixa",
             "DUPLICIDADE" => "Duplicidade",
-            "PRODUTO SEM CATALOGO/CODIGO" => "Produto sem catálogo/código",
-            "PRECO INVALIDO OU ZERADO" => "Preço inválido ou zerado",
-            "QUANTIDADE INVALIDA" => "Quantidade inválida",
-            "CONVERSAO DE PESAVEL PENDENTE" => "Conversão de pesável pendente",
+            "PRODUTO SEM CATALOGO/CODIGO" => "Produto sem catÃ¡logo/cÃ³digo",
+            "PRECO INVALIDO OU ZERADO" => "PreÃ§o invÃ¡lido ou zerado",
+            "QUANTIDADE INVALIDA" => "Quantidade invÃ¡lida",
+            "CONVERSAO DE PESAVEL PENDENTE" => "ConversÃ£o de pesÃ¡vel pendente",
             "FARDO PENDENTE" => "Fardo pendente",
             "CAIXA PENDENTE" => "Caixa pendente",
             "FARDO/CAIXA PENDENTE" => "Fardo/caixa pendente",
-            "REVISAO REJEITADA" => "Revisão rejeitada",
+            "REVISAO REJEITADA" => "RevisÃ£o rejeitada",
             _ => value
         };
     }
@@ -2298,7 +2351,10 @@ public static class HtmlView
         return role switch
         {
             Roles.Admin => "Administrador",
+            Roles.Operator => "Operador",
+            Roles.User => "UsuÃ¡rio",
             _ => role
         };
     }
 }
+
